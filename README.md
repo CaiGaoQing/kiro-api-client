@@ -51,6 +51,9 @@ npm run server
 
 ### 交流群
 ![qr](https://github.com/CaiGaoQing/kiro-api-client/blob/main/qr.jpg?raw=true)
+
+### 打赏一下
+![qr](https://github.com/CaiGaoQing/kiro-api-client/blob/main/cof.jpg?raw=true)
 ### 运行测试
 
 ```bash
