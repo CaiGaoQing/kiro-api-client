@@ -53,7 +53,7 @@ npm run server
 ![qr](https://github.com/CaiGaoQing/kiro-api-client/blob/main/qr.jpg?raw=true)
 
 ### 打赏一下
-![qr](https://github.com/CaiGaoQing/kiro-api-client/blob/main/cof.jpg?raw=true)
+![打赏一下](https://github.com/CaiGaoQing/kiro-api-client/blob/main/cof.jpg?raw=true)
 ### 运行测试
 
 ```bash
@@ -724,6 +724,11 @@ src/
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=CaiGaoQing/kiro-api-client&type=date&legend=top-left)](https://www.star-history.com/#CaiGaoQing/kiro-api-client&type=date&legend=top-left)
+
+## 特别鸣谢
+
+- [AIClient-2-API](https://github.com/justlovemaki/AIClient-2-API)
+
 ## 许可证
 
 MIT

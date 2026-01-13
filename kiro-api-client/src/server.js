@@ -783,6 +783,40 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
     });
 });
 
+// 修改密码
+app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
+    try {
+        const { oldPassword, newPassword } = req.body;
+
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({ success: false, error: '请提供旧密码和新密码' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ success: false, error: '新密码长度至少6位' });
+        }
+
+        // 验证旧密码
+        const user = await userStore.getById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, error: '用户不存在' });
+        }
+
+        const oldPasswordHash = hashPassword(oldPassword);
+        if (user.passwordHash !== oldPasswordHash) {
+            return res.status(400).json({ success: false, error: '旧密码错误' });
+        }
+
+        // 更新密码
+        const newPasswordHash = hashPassword(newPassword);
+        await userStore.updatePassword(req.user.id, newPasswordHash);
+
+        res.json({ success: true, message: '密码修改成功' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // ============ API 密钥管理 ============
 
 // 获取当前用户的 API 密钥列表
@@ -4023,9 +4057,9 @@ app.post('/api/public/usage', async (req, res) => {
         const totalStats = await apiLogStore.getStatsForApiKey(keyRecord.id, {});
 
         // 计算费用
-        const dailyCost = calculateApiKeyCost(keyRecord.id, { startDate: todayStart });
-        const monthlyCost = calculateApiKeyCost(keyRecord.id, { startDate: monthStart });
-        const totalCost = calculateApiKeyCost(keyRecord.id, {});
+        const dailyCost = await calculateApiKeyCost(keyRecord.id, { startDate: todayStart });
+        const monthlyCost = await calculateApiKeyCost(keyRecord.id, { startDate: monthStart });
+        const totalCost = await calculateApiKeyCost(keyRecord.id, {});
 
         // 获取按模型分组的统计
         const modelStats = await apiLogStore.getStatsByModel(keyRecord.id, {});
