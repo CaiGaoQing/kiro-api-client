@@ -2,7 +2,7 @@ import mysql from 'mysql2/promise';
 
 // MySQL 连接配置
 const DB_CONFIG = {
-    host: process.env.MYSQL_HOST || '43.228.76.217',
+    host: process.env.MYSQL_HOST || '127.0.0.1',
     port: parseInt(process.env.MYSQL_PORT || '13306'),
     user: process.env.MYSQL_USER || 'root',
     password: process.env.MYSQL_PASSWORD || '4561230wW?',
