@@ -197,11 +197,12 @@ function initSidebar(currentPage) {
     // 导航点击事件
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', (e) => {
-            e.preventDefault();
             const page = item.dataset.page;
             if (page) {
+                e.preventDefault();
                 navigateTo(page);
             }
+            // 没有 data-page 的链接允许默认行为（如外部链接）
         });
     });
 
@@ -310,6 +311,14 @@ function getSidebarHTML(stats = { total: 0, active: 0, error: 0 }) {
                     </svg>
                     异常账号
                     <span class="nav-badge error" id="nav-error-count">${stats.error}</span>
+                </a>
+                <a href="https://pay.ldxp.cn/shop/N0IK02WR" class="nav-item" target="_blank" rel="noopener noreferrer">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="9" cy="21" r="1"/>
+                        <circle cx="20" cy="21" r="1"/>
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                    </svg>
+                    号池购买
                 </a>
             </div>
             <div class="nav-section">
