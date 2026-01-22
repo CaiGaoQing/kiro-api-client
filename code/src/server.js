@@ -475,7 +475,9 @@ async function checkUsageLimits(keyRecord, clientIp) {
     if (expiresInDays > 0 && createdAt) {
         const createDate = new Date(createdAt);
         const expireDate = new Date(createDate.getTime() + expiresInDays * 24 * 60 * 60 * 1000);
-        if (new Date() > expireDate) {
+        const now = new Date();
+        console.log(`[API Key 过期检查] createdAt: ${createdAt}, createDate: ${createDate.toISOString()}, expireDate: ${expireDate.toISOString()}, now: ${now.toISOString()}, expired: ${now > expireDate}`);
+        if (now > expireDate) {
             return { allowed: false, reason: `密钥已过期 (有效期 ${expiresInDays} 天)` };
         }
     }
