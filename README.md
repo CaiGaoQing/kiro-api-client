@@ -1,4 +1,4 @@
-# Kiro API Client 🚀
+# ALL-2-API 🚀
 
 一个强大的 API 代理服务，通过 Kiro API 和 Gemini Antigravity API 免费使用 Claude/Gemini 顶级模型，并封装为标准 OpenAI 兼容接口。
 
@@ -11,7 +11,7 @@
 
 ---
 
-Kiro API Client 是一个突破客户端限制的 API 代理服务，将原本仅限客户端使用的免费大模型（如 Kiro、Gemini Antigravity）转换为标准 OpenAI 兼容接口，可被任意应用调用。基于 Node.js 构建，支持 OpenAI 和 Claude 协议智能转换，让 Cherry-Studio、NextChat、Cline 等工具能够自由使用 Claude Opus 4.5、Gemini 3 Pro 等高级模型。项目内置账号池管理、智能轮询、自动故障转移和健康检查机制，确保服务高可用。
+ALL-2-API 是一个突破客户端限制的 API 代理服务，将原本仅限客户端使用的免费大模型（如 Kiro、Gemini Antigravity）转换为标准 OpenAI 兼容接口，可被任意应用调用。基于 Node.js 构建，支持 OpenAI 和 Claude 协议智能转换，让 Cherry-Studio、NextChat、Cline 等工具能够自由使用 Claude Opus 4.5、Gemini 3 Pro 等高级模型。项目内置账号池管理、智能轮询、自动故障转移和健康检查机制，确保服务高可用。
 
 ---
 
