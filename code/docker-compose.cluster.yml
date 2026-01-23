@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  balancer:
+    build: .
+    container_name: kiro-balancer
+    restart: unless-stopped
+    ports:
+      - "${BALANCER_PORT:-13003}:13003"
+    environment:
+      - TZ=Asia/Shanghai
+      - BALANCER_PORT=13003
+      - BACKEND_HOSTS=api-1:13004,api-2:13005,api-3:13006,api-4:13007,api-5:13008
+    command: ["node", "src/balancer.js"]
+    depends_on:
+      - api-1
+      - api-2
+      - api-3
+      - api-4
+      - api-5
+    networks:
+      - kiro-network
+
+  api-1:
+    build: .
+    container_name: kiro-api-1
+    restart: unless-stopped
+    environment:
+      - PORT=13004
+      - TZ=Asia/Shanghai
+      - MYSQL_HOST=${MYSQL_HOST:-host.docker.internal}
+      - MYSQL_PORT=${MYSQL_PORT:-13306}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-4561230wW?}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-kiro_api}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kiro-network
+
+  api-2:
+    build: .
+    container_name: kiro-api-2
+    restart: unless-stopped
+    environment:
+      - PORT=13005
+      - TZ=Asia/Shanghai
+      - MYSQL_HOST=${MYSQL_HOST:-host.docker.internal}
+      - MYSQL_PORT=${MYSQL_PORT:-13306}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-4561230wW?}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-kiro_api}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kiro-network
+
+  api-3:
+    build: .
+    container_name: kiro-api-3
+    restart: unless-stopped
+    environment:
+      - PORT=13006
+      - TZ=Asia/Shanghai
+      - MYSQL_HOST=${MYSQL_HOST:-host.docker.internal}
+      - MYSQL_PORT=${MYSQL_PORT:-13306}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-4561230wW?}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-kiro_api}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kiro-network
+
+  api-4:
+    build: .
+    container_name: kiro-api-4
+    restart: unless-stopped
+    environment:
+      - PORT=13007
+      - TZ=Asia/Shanghai
+      - MYSQL_HOST=${MYSQL_HOST:-host.docker.internal}
+      - MYSQL_PORT=${MYSQL_PORT:-13306}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-4561230wW?}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-kiro_api}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kiro-network
+
+  api-5:
+    build: .
+    container_name: kiro-api-5
+    restart: unless-stopped
+    environment:
+      - PORT=13008
+      - TZ=Asia/Shanghai
+      - MYSQL_HOST=${MYSQL_HOST:-host.docker.internal}
+      - MYSQL_PORT=${MYSQL_PORT:-13306}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-4561230wW?}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-kiro_api}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kiro-network
+
+networks:
+  kiro-network:
+    driver: bridge

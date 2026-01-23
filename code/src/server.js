@@ -731,6 +731,35 @@ app.get('/health', (req, res) => {
     });
 });
 
+// 获取客户端 IP (用于状态页面)
+app.get('/api/client-ip', (req, res) => {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+               req.headers['x-real-ip'] ||
+               req.socket.remoteAddress ||
+               '127.0.0.1';
+    res.json({ ip });
+});
+
+// 负载均衡状态 (单节点模式)
+app.get('/lb/status', (req, res) => {
+    const port = process.env.PORT || 13004;
+    res.json({
+        balancer: { port: 13003, mode: 'single' },
+        summary: { total: 1, healthy: 1, unhealthy: 0 },
+        backends: [{
+            host: '127.0.0.1',
+            port: parseInt(port),
+            healthy: true,
+            reachable: true,
+            latency: '1ms',
+            error: null,
+            lastCheck: new Date().toISOString()
+        }],
+        cache: { size: 0 },
+        timestamp: new Date().toISOString()
+    });
+});
+
 // 模型列表端点 - OpenAI 格式
 app.get('/v1/models', (req, res) => {
     const models = Object.keys(KIRO_CONSTANTS.MODEL_MAPPING || {});

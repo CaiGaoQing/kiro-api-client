@@ -1,0 +1,45 @@
+version: '3.8'
+
+# 动态扩展版本 - 使用 DNS 发现
+# 用法:
+#   启动: docker-compose -f docker-compose.scale.yml up -d --scale api=5
+#   扩容: docker-compose -f docker-compose.scale.yml up -d --scale api=10 --no-recreate
+#   缩容: docker-compose -f docker-compose.scale.yml up -d --scale api=3 --no-recreate
+
+services:
+  balancer:
+    build: .
+    container_name: kiro-balancer
+    restart: unless-stopped
+    ports:
+      - "${BALANCER_PORT:-13003}:13003"
+    environment:
+      - TZ=Asia/Shanghai
+      - BALANCER_PORT=13003
+      - BACKEND_DNS=api
+      - BACKEND_PORT=13004
+    command: ["node", "src/balancer.js"]
+    depends_on:
+      - api
+    networks:
+      - kiro-network
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      - PORT=13004
+      - TZ=Asia/Shanghai
+      - MYSQL_HOST=${MYSQL_HOST:-host.docker.internal}
+      - MYSQL_PORT=${MYSQL_PORT:-13306}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-4561230wW?}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-kiro_api}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kiro-network
+
+networks:
+  kiro-network:
+    driver: bridge
