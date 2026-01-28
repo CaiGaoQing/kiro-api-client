@@ -69,7 +69,7 @@ function renderCards() {
         const id = parseInt(card.dataset.id);
 
         // 复选框事件
-        const checkbox = card.querySelector('.card-checkbox');
+        const checkbox = card.querySelector('.card-checkbox input');
         if (checkbox) {
             checkbox.addEventListener('change', (e) => {
                 e.stopPropagation();
@@ -92,63 +92,69 @@ function renderCards() {
                 refreshSingleUsage(id);
             });
         }
+
+        // 刷新模型按钮事件
+        const refreshModelsBtn = card.querySelector('.btn-refresh-models');
+        if (refreshModelsBtn) {
+            refreshModelsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                refreshSingleUsage(id);
+            });
+        }
     });
 }
 
 function createCardHTML(cred) {
-    const statusClass = cred.isActive ? 'active' : '';
-    const errorClass = cred.errorCount > 0 ? 'has-error' : '';
     const isSelected = selectedIds.has(cred.id);
+    const usage = usageCache[cred.id];
+    const displayName = cred.email || cred.name || 'Unknown';
+
+    // 截断显示名称
+    const truncateName = (name, maxLen) => {
+        if (name.length <= maxLen) return name;
+        const atIndex = name.indexOf('@');
+        if (atIndex === -1) return name.substring(0, maxLen - 3) + '...';
+        const prefix = name.substring(0, atIndex);
+        const domain = name.substring(atIndex);
+        if (domain.length >= maxLen - 3) {
+            return prefix.substring(0, 3) + '...' + domain.substring(0, maxLen - 6);
+        }
+        const availableLen = maxLen - domain.length - 3;
+        if (availableLen <= 0) return name.substring(0, maxLen - 3) + '...';
+        return prefix.substring(0, availableLen) + '...' + domain;
+    };
+    const shortName = truncateName(displayName, 28);
 
     return `
-        <div class="account-card ${statusClass} ${errorClass} ${isSelected ? 'selected' : ''}" data-id="${cred.id}">
+        <div class="account-card gemini-card ${isSelected ? 'selected' : ''}" data-id="${cred.id}">
             <div class="card-header">
-                <div class="card-select">
+                <div class="card-checkbox">
                     <input type="checkbox" class="checkbox-custom card-checkbox" ${isSelected ? 'checked' : ''}>
                 </div>
-                <div class="card-avatar gemini">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                    </svg>
-                </div>
-                <div class="card-info">
-                    <div class="card-name">${escapeHtml(cred.name)}</div>
-                    <div class="card-email">${escapeHtml(cred.email || '-')}</div>
-                </div>
-                <div class="card-status">
-                    ${cred.isActive ? '<span class="status-badge active">活跃</span>' : ''}
-                    ${cred.errorCount > 0 ? `<span class="status-badge error">错误 ${cred.errorCount}</span>` : ''}
+                <div class="card-title">
+                    <span class="card-email" title="${escapeHtml(displayName)}">${escapeHtml(shortName)}</span>
+                    ${cred.isActive ? '<span class="pro-badge">活跃</span>' : ''}
                 </div>
             </div>
-            <div class="card-body">
-                <div class="card-usage" data-id="${cred.id}">
-                    ${generateUsageHTML(usageCache[cred.id])}
-                </div>
-                <div class="card-meta">
-                    <div class="meta-item">
-                        <span class="meta-label">Project ID</span>
-                        <span class="meta-value">${escapeHtml(cred.projectId || '-')}</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">创建时间</span>
-                        <span class="meta-value">${formatDate(cred.createdAt)}</span>
-                    </div>
-                    ${cred.expiresAt ? `
-                    <div class="meta-item">
-                        <span class="meta-label">过期时间</span>
-                        <span class="meta-value ${isExpiringSoon(cred.expiresAt) ? 'warning' : ''}">${formatDate(cred.expiresAt)}</span>
-                    </div>
-                    ` : ''}
-                    ${cred.lastErrorMessage ? `
-                    <div class="meta-item error-info">
-                        <span class="meta-label">最后错误</span>
-                        <span class="meta-value error-text" title="${escapeHtml(cred.lastErrorMessage)}">${escapeHtml(cred.lastErrorMessage.substring(0, 50))}${cred.lastErrorMessage.length > 50 ? '...' : ''}</span>
-                    </div>
-                    ` : ''}
-                </div>
+            <div class="card-models" data-id="${cred.id}">
+                ${generateModelTagsHTML(usage)}
             </div>
             <div class="card-footer">
+                <span class="card-date">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    ${formatDateShort(cred.createdAt)}
+                </span>
                 <div class="card-actions">
+                    <button class="action-btn" title="详情" onclick="event.stopPropagation(); showCredentialDetail(${cred.id})">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 16v-4"/>
+                            <path d="M12 8h.01"/>
+                        </svg>
+                    </button>
                     <button class="action-btn" title="对话" onclick="event.stopPropagation(); openChat(${cred.id})">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -158,11 +164,6 @@ function createCardHTML(cred) {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="23 4 23 10 17 10"/>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                        </svg>
-                    </button>
-                    <button class="action-btn" title="测试连接" onclick="event.stopPropagation(); testCredential(${cred.id})">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                         </svg>
                     </button>
                     <button class="action-btn ${cred.isActive ? 'active' : ''}" title="${cred.isActive ? '当前活跃' : '设为活跃'}" onclick="event.stopPropagation(); activateCredential(${cred.id})">
@@ -181,6 +182,98 @@ function createCardHTML(cred) {
             </div>
         </div>
     `;
+}
+
+// 生成模型标签网格 HTML
+function generateModelTagsHTML(usage) {
+    if (!usage || !usage.models || Object.keys(usage.models).length === 0) {
+        return `<div class="model-tags-empty">
+            <span class="empty-text">点击刷新查看模型额度</span>
+            <button class="btn-refresh-models" onclick="event.stopPropagation();">刷新</button>
+        </div>`;
+    }
+
+    const models = usage.models;
+    const modelNames = Object.keys(models);
+
+    let tagsHTML = '<div class="model-tags-grid">';
+    for (const modelName of modelNames) {
+        const modelInfo = models[modelName];
+        const remaining = modelInfo.remaining || 0;
+        const remainingPercent = Math.round(remaining * 100);
+        const statusClass = remainingPercent < 20 ? 'danger' : remainingPercent < 50 ? 'warning' : 'success';
+
+        // 简化模型名称
+        let shortName = modelName
+            .replace('gemini-', 'G')
+            .replace('-preview', '')
+            .replace('-latest', '')
+            .replace('2.0-flash-exp', '2 Fla...')
+            .replace('2.0-pro-exp', '2 Pro')
+            .replace('1.5-pro', '1.5 Pro')
+            .replace('1.5-flash', '1.5 Fla...')
+            .replace('-thinking-exp', ' Think')
+            .replace('exp-', '')
+            .replace('imagen-3.0-generate-002', 'G3 Ima...')
+            .replace('claude-3-5-sonnet', 'Claude...');
+
+        if (shortName.length > 10) {
+            shortName = shortName.substring(0, 8) + '...';
+        }
+
+        // 格式化重置时间
+        let resetText = '';
+        if (modelInfo.resetTime) {
+            const resetDate = new Date(modelInfo.resetTime);
+            const now = new Date();
+            const diffMs = resetDate - now;
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            if (diffMs < 0) {
+                resetText = '已重置';
+            } else if (diffDays > 0) {
+                resetText = diffDays + 'd ' + diffHours + 'h';
+            } else if (diffHours > 0) {
+                resetText = diffHours + 'h ' + diffMins + 'm';
+            } else {
+                resetText = diffMins + 'm';
+            }
+        }
+
+        tagsHTML += `
+            <div class="model-tag ${statusClass}" title="${modelName}">
+                <span class="model-name">${shortName}</span>
+                <span class="model-reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${resetText}</span>
+                <span class="model-percent">${remainingPercent}%</span>
+            </div>
+        `;
+    }
+    tagsHTML += '</div>';
+
+    return tagsHTML;
+}
+
+// 显示凭证详情
+function showCredentialDetail(id) {
+    const cred = credentials.find(c => c.id === id);
+    if (!cred) return;
+
+    // TODO: 实现详情弹窗
+    showToast('详情功能开发中', 'info');
+}
+
+// 格式化日期（短格式）
+function formatDateShort(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).replace(/\//g, '/');
 }
 
 // ============ 事件绑定 ============
@@ -644,6 +737,43 @@ function handleContextMenuAction(e) {
 // ============ 工具函数 ============
 function updateCounts() {
     document.getElementById('displayed-count').textContent = filteredCredentials.length;
+    updateStatsCards();
+}
+
+// 更新统计卡片
+function updateStatsCards() {
+    const totalAccounts = credentials.length;
+    const activeAccounts = credentials.filter(c => c.isActive).length;
+
+    // 统计可用模型数和平均额度
+    let totalModels = new Set();
+    let totalQuotaPercent = 0;
+    let accountsWithUsage = 0;
+
+    for (const cred of credentials) {
+        const usage = usageCache[cred.id];
+        if (usage && usage.models) {
+            const models = Object.keys(usage.models);
+            models.forEach(m => totalModels.add(m));
+
+            // 计算平均额度
+            let avgRemaining = 0;
+            models.forEach(m => {
+                avgRemaining += (usage.models[m].remaining || 0);
+            });
+            if (models.length > 0) {
+                totalQuotaPercent += (avgRemaining / models.length) * 100;
+                accountsWithUsage++;
+            }
+        }
+    }
+
+    const avgQuota = accountsWithUsage > 0 ? Math.round(totalQuotaPercent / accountsWithUsage) : 0;
+
+    document.getElementById('stat-total-accounts').textContent = totalAccounts;
+    document.getElementById('stat-active-accounts').textContent = activeAccounts;
+    document.getElementById('stat-total-models').textContent = totalModels.size;
+    document.getElementById('stat-avg-quota').textContent = accountsWithUsage > 0 ? avgQuota + '%' : '-';
 }
 
 function escapeHtml(str) {
@@ -750,10 +880,11 @@ async function loadAllUsage() {
 
 // 刷新单个账号的额度
 async function refreshSingleUsage(id, showToastMsg = true) {
-    const usageSection = document.querySelector(`.card-usage[data-id="${id}"]`);
-    if (usageSection) {
-        const usageValue = usageSection.querySelector('.usage-value');
-        if (usageValue) usageValue.textContent = '加载中...';
+    const modelsSection = document.querySelector(`.card-models[data-id="${id}"]`);
+    if (modelsSection) {
+        modelsSection.innerHTML = `<div class="model-tags-empty">
+            <span class="empty-text">加载中...</span>
+        </div>`;
     }
 
     try {
@@ -765,10 +896,10 @@ async function refreshSingleUsage(id, showToastMsg = true) {
         if (result.success && result.data) {
             usageCache[id] = result.data;
             // 更新卡片显示
-            if (usageSection) {
-                usageSection.innerHTML = generateUsageHTML(result.data);
+            if (modelsSection) {
+                modelsSection.innerHTML = generateModelTagsHTML(result.data);
                 // 重新绑定刷新按钮事件
-                const refreshBtn = usageSection.querySelector('.btn-refresh-usage');
+                const refreshBtn = modelsSection.querySelector('.btn-refresh-models');
                 if (refreshBtn) {
                     refreshBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
@@ -776,23 +907,36 @@ async function refreshSingleUsage(id, showToastMsg = true) {
                     });
                 }
             }
+            updateStatsCards();
             if (showToastMsg) showToast('额度刷新成功', 'success');
         } else {
-            if (usageSection) {
-                const usageValue = usageSection.querySelector('.usage-value');
-                if (usageValue) {
-                    usageValue.textContent = '获取失败';
-                    usageValue.style.color = 'var(--accent-danger)';
+            if (modelsSection) {
+                modelsSection.innerHTML = `<div class="model-tags-empty">
+                    <span class="empty-text" style="color: var(--accent-danger);">获取失败</span>
+                    <button class="btn-refresh-models">重试</button>
+                </div>`;
+                const refreshBtn = modelsSection.querySelector('.btn-refresh-models');
+                if (refreshBtn) {
+                    refreshBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        refreshSingleUsage(id);
+                    });
                 }
             }
             if (showToastMsg) showToast('额度刷新失败: ' + (result.error || '未知错误'), 'error');
         }
     } catch (error) {
-        if (usageSection) {
-            const usageValue = usageSection.querySelector('.usage-value');
-            if (usageValue) {
-                usageValue.textContent = '获取失败';
-                usageValue.style.color = 'var(--accent-danger)';
+        if (modelsSection) {
+            modelsSection.innerHTML = `<div class="model-tags-empty">
+                <span class="empty-text" style="color: var(--accent-danger);">获取失败</span>
+                <button class="btn-refresh-models">重试</button>
+            </div>`;
+            const refreshBtn = modelsSection.querySelector('.btn-refresh-models');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    refreshSingleUsage(id);
+                });
             }
         }
         if (showToastMsg) showToast('额度刷新失败: ' + error.message, 'error');

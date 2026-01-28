@@ -24,10 +24,12 @@ const log = logger.api;
 const CREDENTIALS_DIR = '.antigravity';
 const CREDENTIALS_FILE = 'oauth_creds.json';
 
-// Base URLs - 按照降级顺序
+// Base URLs - 按照降级顺序 (Sandbox → Daily → Prod)
+// 优先使用 Sandbox/Daily 环境以避免 Prod 环境的 429 错误
 const ANTIGRAVITY_BASE_URLS = [
-    'https://cloudcode-pa.googleapis.com',
-    'https://daily-cloudcode-pa.sandbox.googleapis.com'
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+    'https://daily-cloudcode-pa.googleapis.com',
+    'https://cloudcode-pa.googleapis.com'
 ];
 
 const ANTIGRAVITY_API_VERSION = 'v1internal';
@@ -39,7 +41,7 @@ const OAUTH_SCOPE = ['https://www.googleapis.com/auth/cloud-platform'];
 const OAUTH_CALLBACK_PORT = 8086;
 
 // 默认配置
-const DEFAULT_USER_AGENT = 'antigravity/1.104.0 darwin/arm64';
+const DEFAULT_USER_AGENT = 'antigravity/1.11.9 windows/amd64';
 const REFRESH_SKEW = 3000; // 3000秒（50分钟）提前刷新Token
 const REQUEST_TIMEOUT = 120000; // 2分钟
 
@@ -147,18 +149,27 @@ function ensureRolesInContents(requestBody) {
  * 处理 Thinking 配置
  */
 function normalizeAntigravityThinking(modelName, template, isClaudeModel) {
-    // Claude thinking 模型特殊处理
-    if (isClaudeModel && modelName.includes('thinking')) {
+    const modelLower = modelName.toLowerCase();
+
+    // 判断是否为 Gemini 3 thinking 模型
+    const isGemini3Thinking = modelLower.includes('gemini-3') &&
+        (modelLower.endsWith('-high') || modelLower.endsWith('-low') || modelLower.includes('-pro'));
+
+    // 判断是否为 Claude thinking 模型
+    const isClaudeThinking = isClaudeModel && modelLower.includes('thinking');
+
+    // Gemini 3 Pro (high/low) 或 Claude thinking 模型需要 thinkingConfig
+    if (isGemini3Thinking || isClaudeThinking) {
         if (!template.request.generationConfig) {
             template.request.generationConfig = {};
         }
         template.request.generationConfig.thinkingConfig = {
-            thinkingBudget: template.request.generationConfig?.thinkingBudget || 10000
+            includeThoughts: true,
+            thinkingBudget: 32000
         };
     }
-
-    // Gemini 3.x 模型 thinking 配置
-    if (modelName.startsWith('gemini-3')) {
+    // Gemini 3 Flash 模型 thinking 配置
+    else if (modelLower.startsWith('gemini-3-flash')) {
         if (!template.request.generationConfig) {
             template.request.generationConfig = {};
         }
@@ -317,11 +328,23 @@ export class AntigravityApiService {
         this.availableModels = GEMINI_MODELS;
         this.isInitialized = false;
 
-        // 创建 OAuth2 客户端
-        this.authClient = new OAuth2Client({
+        // 获取代理配置
+        const proxyAgent = getProxyAgent();
+
+        // 创建 OAuth2 客户端（带代理支持）
+        const authClientOptions = {
             clientId: OAUTH_CLIENT_ID,
             clientSecret: OAUTH_CLIENT_SECRET
-        });
+        };
+
+        if (proxyAgent) {
+            authClientOptions.transporterOptions = {
+                agent: proxyAgent
+            };
+            console.log('[Antigravity] OAuth2Client 已配置代理');
+        }
+
+        this.authClient = new OAuth2Client(authClientOptions);
     }
 
     /**
@@ -337,6 +360,14 @@ export class AntigravityApiService {
             refresh_token: credentials.refreshToken,
             expiry_date: credentials.expiresAt ? new Date(credentials.expiresAt).getTime() : null
         });
+
+        // 确保代理配置已应用
+        const proxyAgent = getProxyAgent();
+        if (proxyAgent && !service.authClient._transporterOptions?.agent) {
+            service.authClient._transporterOptions = {
+                agent: proxyAgent
+            };
+        }
 
         return service;
     }
@@ -470,22 +501,40 @@ export class AntigravityApiService {
      */
     async fetchAvailableModels() {
         console.log('[Antigravity] Fetching available models...');
+        const axios = (await import('axios')).default;
+
+        // 获取代理配置（优先数据库配置，其次环境变量）
+        let proxyAgent = getProxyAgent();
+        const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+
+        if (!proxyAgent && proxyUrl) {
+            const { HttpsProxyAgent } = await import('https-proxy-agent');
+            proxyAgent = new HttpsProxyAgent(proxyUrl);
+        }
 
         for (const baseURL of this.baseURLs) {
             try {
                 const modelsURL = `${baseURL}/${ANTIGRAVITY_API_VERSION}:fetchAvailableModels`;
-                const requestOptions = {
-                    url: modelsURL,
+
+                const axiosConfig = {
                     method: 'POST',
+                    url: modelsURL,
                     headers: {
                         'Content-Type': 'application/json',
-                        'User-Agent': this.userAgent
+                        'User-Agent': this.userAgent,
+                        'Authorization': `Bearer ${this.authClient.credentials.access_token}`
                     },
-                    responseType: 'json',
-                    body: JSON.stringify({ project: this.projectId })
+                    data: { project: this.projectId },
+                    timeout: REQUEST_TIMEOUT
                 };
 
-                const res = await this.authClient.request(requestOptions);
+                // 添加代理配置
+                if (proxyAgent) {
+                    axiosConfig.httpsAgent = proxyAgent;
+                    axiosConfig.proxy = false;
+                }
+
+                const res = await axios(axiosConfig);
                 if (res.data && res.data.models) {
                     const models = Object.keys(res.data.models);
                     this.availableModels = models
@@ -572,6 +621,16 @@ export class AntigravityApiService {
     async callApi(method, body, isRetry = false, retryCount = 0, baseURLIndex = 0) {
         const maxRetries = this.config.maxRetries || 3;
         const baseDelay = this.config.baseDelay || 1000;
+        const axios = (await import('axios')).default;
+
+        // 获取代理配置（优先数据库配置，其次环境变量）
+        let proxyAgent = getProxyAgent();
+        const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+
+        if (!proxyAgent && proxyUrl) {
+            const { HttpsProxyAgent } = await import('https-proxy-agent');
+            proxyAgent = new HttpsProxyAgent(proxyUrl);
+        }
 
         if (baseURLIndex >= this.baseURLs.length) {
             throw new Error('All Antigravity base URLs failed');
@@ -590,18 +649,21 @@ export class AntigravityApiService {
             // 打印 curl 命令
             log.curl('POST', url, requestHeaders, body);
 
-            const requestOptions = {
-                url,
+            const axiosConfig = {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'User-Agent': this.userAgent
-                },         responseType: 'json',
-                body: JSON.stringify(body),
+                url,
+                headers: requestHeaders,
+                data: body,
                 timeout: REQUEST_TIMEOUT
             };
 
-            const res = await this.authClient.request(requestOptions);
+            // 添加代理配置
+            if (proxyAgent) {
+                axiosConfig.httpsAgent = proxyAgent;
+                axiosConfig.proxy = false;
+            }
+
+            const res = await axios(axiosConfig);
             return res.data;
         } catch (error) {
             const status = error.response?.status;
@@ -632,8 +694,16 @@ export class AntigravityApiService {
      * 流式 API 调用
      */
     async *streamApi(method, body, isRetry = false) {
-        // 获取代理配置
-        const proxyAgent = getProxyAgent();
+        // 获取代理配置（优先数据库配置，其次环境变量）
+        let proxyAgent = getProxyAgent();
+        const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+
+        if (!proxyAgent && proxyUrl) {
+            const { HttpsProxyAgent } = await import('https-proxy-agent');
+            proxyAgent = new HttpsProxyAgent(proxyUrl);
+            console.log('[Antigravity Stream] Using env proxy:', proxyUrl);
+        }
+
         const axios = (await import('axios')).default;
 
         for (let baseURLIndex = 0; baseURLIndex < this.baseURLs.length; baseURLIndex++) {
@@ -642,6 +712,9 @@ export class AntigravityApiService {
             try {
                 const url = `${baseURL}/${ANTIGRAVITY_API_VERSION}:${method}?alt=sse`;
                 const accessToken = this.authClient.credentials.access_token;
+
+                // 打印请求体用于调试
+                console.log('[Antigravity Stream] Request body:', JSON.stringify(body, null, 2));
 
                 const requestHeaders = {
                     'Content-Type': 'application/json',
@@ -863,21 +936,40 @@ export class AntigravityApiService {
             models: {}
         };
 
+        const axios = (await import('axios')).default;
+
+        // 获取代理配置（优先数据库配置，其次环境变量）
+        let proxyAgent = getProxyAgent();
+        const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+
+        if (!proxyAgent && proxyUrl) {
+            const { HttpsProxyAgent } = await import('https-proxy-agent');
+            proxyAgent = new HttpsProxyAgent(proxyUrl);
+        }
+
         for (const baseURL of this.baseURLs) {
             try {
                 const modelsURL = `${baseURL}/${ANTIGRAVITY_API_VERSION}:fetchAvailableModels`;
-                const requestOptions = {
-                    url: modelsURL,
+
+                const axiosConfig = {
                     method: 'POST',
+                    url: modelsURL,
                     headers: {
                         'Content-Type': 'application/json',
-                        'User-Agent': this.userAgent
+                        'User-Agent': this.userAgent,
+                        'Authorization': `Bearer ${this.authClient.credentials.access_token}`
                     },
-                    responseType: 'json',
-                    body: JSON.stringify({ project: this.projectId })
+                    data: { project: this.projectId },
+                    timeout: REQUEST_TIMEOUT
                 };
 
-                const res = await this.authClient.request(requestOptions);
+                // 添加代理配置
+                if (proxyAgent) {
+                    axiosConfig.httpsAgent = proxyAgent;
+                    axiosConfig.proxy = false;
+                }
+
+                const res = await axios(axiosConfig);
                 console.log(`[Antigravity] fetchAvailableModels success`);
                 // 打印完整响应用于调试
                 console.log(`[Antigravity] Models response:`, JSON.stringify(res.data, null, 2));

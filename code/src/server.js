@@ -3841,8 +3841,8 @@ app.post('/api/gemini/credentials/:id/activate', async (req, res) => {
 
 // 刷新 Gemini 凭证 Token
 app.post('/api/gemini/credentials/:id/refresh', async (req, res) => {
+    const id = parseInt(req.params.id);
     try {
-        const id = parseInt(req.params.id);
         const credential = await geminiStore.getById(id);
         if (!credential) {
             return res.status(404).json({ success: false, error: '凭证不存在' });

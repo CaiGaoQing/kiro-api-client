@@ -24,6 +24,11 @@
     --accent-info: #3b82f6;
     --accent-purple: #a855f7;
     --accent-cyan: #06b6d4;
+    --accent-gemini: #4285f4;
+    --accent-gemini-green: #34a853;
+    --accent-gemini-yellow: #fbbc05;
+    --accent-gemini-red: #ea4335;
+    --accent-gemini-glow: rgba(66, 133, 244, 0.25);
     --sidebar-width: 260px;
     --header-height: 64px;
     --radius-xs: 4px;
@@ -266,6 +271,11 @@ body {
     align-items: center;
     justify-content: center;
     box-shadow: var(--shadow-glow);
+}
+
+.page-icon.gemini {
+    background: linear-gradient(135deg, #4285f4, #34a853, #fbbc05, #ea4335);
+    box-shadow: 0 0 30px rgba(66, 133, 244, 0.3);
 }
 
 .page-icon svg { width: 22px; height: 22px; color: white; }
@@ -568,6 +578,7 @@ body {
 .card-avatar.github { background: linear-gradient(135deg, #24292e, #6e5494); }
 .card-avatar.builder-id { background: linear-gradient(135deg, #ff9900, #ff6600); }
 .card-avatar.idc { background: linear-gradient(135deg, #00a1c9, #0073bb); }
+.card-avatar.gemini { background: linear-gradient(135deg, #4285f4, #34a853, #fbbc05, #ea4335); }
 
 .card-avatar-status {
     position: absolute;
@@ -739,6 +750,12 @@ body {
     background: rgba(139, 92, 246, 0.12);
     color: #a78bfa;
     border-color: rgba(139, 92, 246, 0.25);
+}
+
+.tag-provider.gemini {
+    background: rgba(66, 133, 244, 0.12);
+    color: #60a5fa;
+    border-color: rgba(66, 133, 244, 0.25);
 }
 
 /* Card Footer */
@@ -1839,4 +1856,309 @@ body {
 
 .api-key-limits {
     min-width: 120px;
+}
+
+/* ============ Gemini Page Styles ============ */
+
+/* Gemini 卡片样式 - 与 Kiro 账户卡片保持一致 */
+.gemini-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+.gemini-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #4285f4, #34a853, #fbbc05, #ea4335);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.gemini-card:hover {
+    border-color: var(--border-light);
+    background: var(--bg-card-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.gemini-card:hover::before {
+    opacity: 1;
+}
+
+.gemini-card.selected {
+    border-color: var(--accent-gemini);
+    background: rgba(66, 133, 244, 0.05);
+}
+
+.gemini-card.selected::before {
+    opacity: 1;
+}
+
+.gemini-card .card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.gemini-card .card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.gemini-card .card-email {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gemini-card .pro-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(135deg, var(--accent-gemini), var(--accent-gemini-green));
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+.gemini-card .pro-badge::before {
+    content: '◆';
+    font-size: 8px;
+}
+
+/* 模型标签网格 */
+.gemini-card .card-models {
+    margin-bottom: 16px;
+}
+
+.model-tags-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.model-tags-empty {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.btn-refresh-models {
+    background: none;
+    border: none;
+    color: var(--accent-gemini);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+
+.btn-refresh-models:hover {
+    text-decoration: underline;
+}
+
+.model-tag {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    background: var(--accent-success-bg);
+}
+
+.model-tag.success {
+    background: var(--accent-success-bg);
+}
+
+.model-tag.warning {
+    background: var(--accent-warning-bg);
+}
+
+.model-tag.danger {
+    background: var(--accent-danger-bg);
+}
+
+.model-tag .model-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.model-tag .model-reset {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--text-muted);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.model-tag .model-reset svg {
+    opacity: 0.6;
+}
+
+.model-tag .model-percent {
+    font-weight: 600;
+    flex-shrink: 0;
+    min-width: 36px;
+    text-align: right;
+}
+
+.model-tag.success .model-percent {
+    color: var(--accent-success);
+}
+
+.model-tag.warning .model-percent {
+    color: var(--accent-warning);
+}
+
+.model-tag.danger .model-percent {
+    color: var(--accent-danger);
+}
+
+/* Gemini 卡片底部 */
+.gemini-card .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+.gemini-card .card-date {
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.gemini-card .card-date svg {
+    width: 14px;
+    height: 14px;
+    opacity: 0.7;
+}
+
+.gemini-card .card-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.gemini-card .action-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.gemini-card .action-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--accent-gemini);
+}
+
+.gemini-card .action-btn.active {
+    color: var(--accent-gemini);
+}
+
+.gemini-card .action-btn.danger:hover {
+    background: var(--accent-danger-bg);
+    color: var(--accent-danger);
+}
+
+.gemini-card .action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Gemini 页面卡片特殊样式 */
+#gemini-page .account-card::before {
+    background: linear-gradient(90deg, #4285f4, #34a853, #fbbc05, #ea4335);
+}
+
+#gemini-page .account-card:hover {
+    border-color: rgba(66, 133, 244, 0.4);
+}
+
+#gemini-page .account-card.selected {
+    border-color: var(--accent-gemini);
+    background: rgba(66, 133, 244, 0.05);
+}
+
+/* Gemini 操作按钮 hover 效果 */
+#gemini-page .action-btn:hover {
+    background: rgba(66, 133, 244, 0.1);
+    color: var(--accent-gemini);
+}
+
+#gemini-page .action-btn.active {
+    color: var(--accent-gemini);
+}
+
+#gemini-page .action-btn.danger:hover {
+    background: var(--accent-danger-bg);
+    color: var(--accent-danger);
+}
+
+/* Gemini 用量条样式 */
+#gemini-page .usage-bar-fill {
+    background: linear-gradient(90deg, #4285f4, #34a853);
+}
+
+#gemini-page .usage-bar-fill.warning {
+    background: linear-gradient(90deg, #fbbc05, #f59e0b);
+}
+
+#gemini-page .usage-bar-fill.danger {
+    background: linear-gradient(90deg, #ea4335, #ef4444);
+}
+
+/* Gemini 空状态样式 */
+#gemini-page .empty-state .empty-icon {
+    color: var(--accent-gemini);
+    opacity: 0.6;
+}
+
+#gemini-page .empty-state .btn-primary {
+    background: linear-gradient(135deg, #4285f4, #34a853);
+    box-shadow: 0 2px 8px rgba(66, 133, 244, 0.3);
+}
+
+#gemini-page .empty-state .btn-primary:hover {
+    box-shadow: 0 4px 16px rgba(66, 133, 244, 0.4);
 }
