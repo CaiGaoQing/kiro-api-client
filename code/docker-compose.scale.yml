@@ -24,6 +24,9 @@ x-api-common: &api-common
     MYSQL_USER: ${MYSQL_USER:-root}
     MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     MYSQL_DATABASE: ${MYSQL_DATABASE:-kiro_api}
+    HTTP_PROXY: ${HTTP_PROXY:-http://127.0.0.1:7890}
+    HTTPS_PROXY: ${HTTPS_PROXY:-http://127.0.0.1:7890}
+    NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
 
 services:
   balancer:
