@@ -1,9 +1,9 @@
 /**
  * Vertex AI 路由
  * 提供 Vertex AI 凭据管理和聊天 API
- * 支持 Claude 模型（通过 Vertex AI）和 Gemini 模型（通过 Vertex AI 或 Antigravity）
+ * 仅支持 Gemini 模型（通过 GCP Vertex AI）
  */
-import { VertexClient, VERTEX_MODEL_MAPPING, VERTEX_GEMINI_MODEL_MAPPING, VERTEX_REGIONS } from './vertex.js';
+import { VertexClient, VERTEX_GEMINI_MODEL_MAPPING, VERTEX_REGIONS } from './vertex.js';
 import { VertexCredentialStore, GeminiCredentialStore } from '../db.js';
 import {
     AntigravityApiService,
@@ -277,9 +277,9 @@ export async function setupVertexRoutes(app) {
         res.json({ regions: VERTEX_REGIONS });
     });
 
-    // ============ 聊天 API ============
+    // ============ 聊天 API (仅支持 Gemini) ============
 
-    // 非流式聊天
+    // 非流式聊天 (Gemini)
     app.post('/api/vertex/chat/:id', async (req, res) => {
         try {
             const id = parseInt(req.params.id);
@@ -297,7 +297,7 @@ export async function setupVertexRoutes(app) {
             const gcpCredentials = vertexStore.toGcpCredentials(credential);
             const client = VertexClient.fromCredentials(gcpCredentials, credential.region);
 
-            const response = await client.chat(messages, model || 'claude-sonnet-4-5', {
+            const response = await client.geminiChat(messages, model || 'gemini-1.5-flash', {
                 system,
                 max_tokens,
                 temperature,
@@ -316,7 +316,7 @@ export async function setupVertexRoutes(app) {
         }
     });
 
-    // 流式聊天
+    // 流式聊天 (Gemini)
     app.post('/api/vertex/chat/:id/stream', async (req, res) => {
         try {
             const id = parseInt(req.params.id);
@@ -338,17 +338,61 @@ export async function setupVertexRoutes(app) {
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
 
-            for await (const event of client.chatStream(messages, model || 'claude-sonnet-4-5', {
+            const messageId = 'msg_' + Date.now() + Math.random().toString(36).substring(2, 8);
+            const inputTokens = Math.ceil(JSON.stringify(messages).length / 4);
+
+            // 发送 message_start 事件
+            res.write(`event: message_start\ndata: ${JSON.stringify({
+                type: 'message_start',
+                message: {
+                    id: messageId,
+                    type: 'message',
+                    role: 'assistant',
+                    content: [],
+                    model: model || 'gemini-1.5-flash',
+                    stop_reason: null,
+                    stop_sequence: null,
+                    usage: { input_tokens: inputTokens, output_tokens: 0 }
+                }
+            })}\n\n`);
+
+            // 发送 content_block_start 事件
+            res.write(`event: content_block_start\ndata: ${JSON.stringify({
+                type: 'content_block_start',
+                index: 0,
+                content_block: { type: 'text', text: '' }
+            })}\n\n`);
+
+            let outputTokens = 0;
+
+            for await (const event of client.geminiChatStream(messages, model || 'gemini-1.5-flash', {
                 system,
                 max_tokens,
                 temperature,
                 top_p,
                 top_k
             })) {
-                res.write(`data: ${JSON.stringify(event)}\n\n`);
+                if (event.type === 'content_block_delta' && event.delta?.text) {
+                    outputTokens += Math.ceil(event.delta.text.length / 4);
+                    res.write(`event: content_block_delta\ndata: ${JSON.stringify({
+                        type: 'content_block_delta',
+                        index: 0,
+                        delta: { type: 'text_delta', text: event.delta.text }
+                    })}\n\n`);
+                }
+                if (event.type === 'usage' && event.usage) {
+                    outputTokens = event.usage.output_tokens || outputTokens;
+                }
             }
 
-            res.write('data: [DONE]\n\n');
+            // 发送结束事件
+            res.write(`event: content_block_stop\ndata: ${JSON.stringify({ type: 'content_block_stop', index: 0 })}\n\n`);
+            res.write(`event: message_delta\ndata: ${JSON.stringify({
+                type: 'message_delta',
+                delta: { stop_reason: 'end_turn', stop_sequence: null },
+                usage: { output_tokens: outputTokens }
+            })}\n\n`);
+            res.write(`event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`);
             res.end();
 
             await vertexStore.incrementUseCount(id);
@@ -360,7 +404,7 @@ export async function setupVertexRoutes(app) {
             if (!res.headersSent) {
                 res.status(500).json({ error: error.message });
             } else {
-                res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+                res.write(`event: error\ndata: ${JSON.stringify({ type: 'error', error: { message: error.message } })}\n\n`);
                 res.end();
             }
         }
@@ -368,7 +412,7 @@ export async function setupVertexRoutes(app) {
 
     // ============ Claude API 兼容端点 ============
 
-    // /vertex/v1/messages - Claude API 格式（支持 Claude 和 Gemini 模型）
+    // /vertex/v1/messages - Claude API 格式（仅支持 Gemini 模型）
     app.post('/vertex/v1/messages', async (req, res) => {
         const { messages, model, system, max_tokens, temperature, top_p, top_k, stream } = req.body;
 
@@ -609,89 +653,27 @@ export async function setupVertexRoutes(app) {
                 }
             }
         } else {
-            // ============ Claude 模型处理（通过 Vertex AI）============
-            console.log(`[Vertex/Claude] 收到请求 | model=${model} | stream=${stream}`);
-            try {
-                console.log('[Vertex/Claude] 获取凭据...');
-                const credential = await vertexStore.getRandomActive();
-                if (!credential) {
-                    console.log('[Vertex/Claude] 错误: 没有可用的凭据');
-                    return res.status(503).json({ error: '没有可用的 Vertex AI 凭据' });
-                }
-                console.log(`[Vertex/Claude] 使用凭据: ${credential.name} (ID: ${credential.id})`);
-
-                const gcpCredentials = vertexStore.toGcpCredentials(credential);
-                console.log(`[Vertex/Claude] 创建客户端 | region=${credential.region}`);
-                const client = VertexClient.fromCredentials(gcpCredentials, credential.region);
-
-                if (stream) {
-                    res.setHeader('Content-Type', 'text/event-stream');
-                    res.setHeader('Cache-Control', 'no-cache');
-                    res.setHeader('Connection', 'keep-alive');
-
-                    console.log('[Vertex/Claude] 开始流式请求...');
-                    for await (const event of client.chatStream(messages, model || 'claude-sonnet-4-5', {
-                        system,
-                        max_tokens: max_tokens || 8192,
-                        temperature,
-                        top_p,
-                        top_k
-                    })) {
-                        res.write(`data: ${JSON.stringify(event)}\n\n`);
-                    }
-
-                    res.write('data: [DONE]\n\n');
-                    res.end();
-                    console.log('[Vertex/Claude] 流式请求完成');
-                } else {
-                    console.log('[Vertex/Claude] 开始非流式请求...');
-                    console.log('[Vertex/Claude] 获取 access token...');
-                    const response = await client.chat(messages, model || 'claude-sonnet-4-5', {
-                        system,
-                        max_tokens: max_tokens || 8192,
-                        temperature,
-                        top_p,
-                        top_k
-                    });
-
-                    console.log('[Vertex/Claude] 请求成功，返回响应');
-                    res.json(response);
-                }
-
-                await vertexStore.incrementUseCount(credential.id);
-                await vertexStore.resetErrorCount(credential.id);
-            } catch (error) {
-                console.error(`[Vertex/Claude] 错误: ${error.message}`);
-                console.error(`[Vertex/Claude] 错误堆栈: ${error.stack}`);
-                if (!res.headersSent) {
-                    res.status(500).json({ error: error.message });
-                } else {
-                    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-                    res.end();
-                }
-            }
+            // 不支持非 Gemini 模型
+            return res.status(400).json({
+                error: `不支持的模型: ${model}。Vertex 端点仅支持 Gemini 模型。`
+            });
         }
     });
 
-    // /vertex/v1/models - 模型列表（包含 Claude 和 Gemini）
+    // /vertex/v1/models - 模型列表（仅 Gemini）
     app.get('/vertex/v1/models', (req, res) => {
-        // Claude 模型（通过 Vertex AI）
-        const claudeModels = Object.keys(VERTEX_MODEL_MAPPING).map(id => ({
-            id,
-            object: 'model',
-            created: Date.now(),
-            owned_by: 'anthropic'
-        }));
-
-        // Gemini 模型（通过 Antigravity）
-        const geminiModels = GEMINI_MODELS.map(id => ({
+        // Gemini 模型
+        const geminiModels = [
+            ...Object.keys(VERTEX_GEMINI_MODEL_MAPPING),
+            ...GEMINI_MODELS.filter(m => !VERTEX_GEMINI_MODEL_MAPPING[m])
+        ].map(id => ({
             id,
             object: 'model',
             created: Date.now(),
             owned_by: 'google'
         }));
 
-        res.json({ object: 'list', data: [...claudeModels, ...geminiModels] });
+        res.json({ object: 'list', data: geminiModels });
     });
 
     console.log('[Vertex] 路由已设置');

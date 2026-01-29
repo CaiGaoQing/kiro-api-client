@@ -1,6 +1,6 @@
 /**
  * GCP Vertex AI 客户端
- * 通过 GCP Vertex AI 访问 Claude 模型
+ * 通过 GCP Vertex AI 访问 Gemini 模型
  */
 import axios from 'axios';
 import fs from 'fs/promises';
@@ -8,33 +8,6 @@ import { logger } from '../logger.js';
 import { getAxiosProxyConfig } from '../proxy.js';
 
 const log = logger.api;
-
-/**
- * Vertex AI 模型映射表
- */
-export const VERTEX_MODEL_MAPPING = {
-    // Claude 3 系列
-    'claude-3-sonnet-20240229': 'claude-3-sonnet@20240229',
-    'claude-3-haiku-20240307': 'claude-3-haiku@20240307',
-    'claude-3-opus-20240229': 'claude-3-opus@20240229',
-    // Claude 3.5 系列
-    'claude-3-5-sonnet-20240620': 'claude-3-5-sonnet@20240620',
-    'claude-3-5-sonnet-20241022': 'claude-3-5-sonnet-v2@20241022',
-    'claude-3-5-haiku-20241022': 'claude-3-5-haiku@20241022',
-    // Claude 3.7 系列
-    'claude-3-7-sonnet-20250219': 'claude-3-7-sonnet@20250219',
-    // Claude 4 系列
-    'claude-4-sonnet-20250514': 'claude-sonnet-4@20250514',
-    'claude-sonnet-4-20250514': 'claude-sonnet-4@20250514',
-    // Claude 4.5 系列
-    'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5@20250929',
-    'claude-haiku-4-5-20251001': 'claude-haiku-4-5@20251001',
-    'claude-opus-4-5-20251101': 'claude-opus-4-5@20251101',
-    // 简写别名
-    'claude-sonnet-4-5': 'claude-sonnet-4-5@20250929',
-    'claude-haiku-4-5': 'claude-haiku-4-5@20251001',
-    'claude-opus-4-5': 'claude-opus-4-5@20251101'
-};
 
 /**
  * Gemini 模型映射表（Vertex AI）
@@ -72,7 +45,7 @@ export const VERTEX_GEMINI_MODEL_MAPPING = {
 /**
  * 默认模型
  */
-export const VERTEX_DEFAULT_MODEL = 'claude-sonnet-4-5@20250929';
+export const VERTEX_DEFAULT_MODEL = 'gemini-1.5-flash';
 
 /**
  * Vertex AI 支持的区域
@@ -212,20 +185,6 @@ export class VertexClient {
     }
 
     /**
-     * 获取 Vertex AI API URL (Claude)
-     */
-    _getApiUrl(model, stream = false) {
-        const vertexModel = VERTEX_MODEL_MAPPING[model] || model;
-        const action = stream ? 'streamRawPredict' : 'rawPredict';
-
-        if (this.region === 'global') {
-            return `https://aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/us-central1/publishers/anthropic/models/${vertexModel}:${action}`;
-        }
-
-        return `https://${this.region}-aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/${this.region}/publishers/anthropic/models/${vertexModel}:${action}`;
-    }
-
-    /**
      * 获取 Vertex AI Gemini API URL
      */
     _getGeminiApiUrl(model, stream = false) {
@@ -237,328 +196,17 @@ export class VertexClient {
     }
 
     /**
-     * 检测是否为 Gemini 模型
-     */
-    _isGeminiModel(model) {
-        return model && (model.startsWith('gemini') || VERTEX_GEMINI_MODEL_MAPPING[model]);
-    }
-
-    /**
-     * 转换请求为 Vertex AI 格式
-     */
-    _convertRequest(messages, model, options = {}) {
-        const request = {
-            anthropic_version: 'vertex-2023-10-16',
-            messages: messages.map(msg => ({
-                role: msg.role,
-                content: msg.content
-            })),
-            max_tokens: options.max_tokens || 8192
-        };
-
-        if (options.system) {
-            request.system = options.system;
-        }
-
-        if (options.temperature !== undefined) {
-            request.temperature = options.temperature;
-        }
-
-        if (options.top_p !== undefined) {
-            request.top_p = options.top_p;
-        }
-
-        if (options.top_k !== undefined) {
-            request.top_k = options.top_k;
-        }
-
-        if (options.stop_sequences) {
-            request.stop_sequences = options.stop_sequences;
-        }
-
-        if (options.tools && Array.isArray(options.tools)) {
-            request.tools = this._cleanTools(options.tools);
-        }
-
-        if (options.tool_choice) {
-            request.tool_choice = options.tool_choice;
-        }
-
-        if (options.metadata) {
-            request.metadata = options.metadata;
-        }
-
-        return request;
-    }
-
-    /**
-     * 清理工具定义（移除 Vertex AI 不支持的字段）
-     */
-    _cleanTools(tools) {
-        return tools.map(tool => {
-            const cleaned = { ...tool };
-
-            // 移除 input_examples
-            if (cleaned.input_examples) {
-                delete cleaned.input_examples;
-            }
-
-            // 清理 input_schema 中的 $comment
-            if (cleaned.input_schema) {
-                cleaned.input_schema = this._cleanSchema(cleaned.input_schema);
-            }
-
-            return cleaned;
-        });
-    }
-
-    /**
-     * 递归清理 schema 中的 $comment
-     */
-    _cleanSchema(schema) {
-        if (!schema || typeof schema !== 'object') {
-            return schema;
-        }
-
-        const cleaned = { ...schema };
-        delete cleaned.$comment;
-
-        if (cleaned.properties) {
-            cleaned.properties = {};
-            for (const [key, value] of Object.entries(schema.properties)) {
-                cleaned.properties[key] = this._cleanSchema(value);
-            }
-        }
-
-        if (cleaned.items) {
-            cleaned.items = this._cleanSchema(schema.items);
-        }
-
-        return cleaned;
-    }
-
-    /**
-     * 发送聊天请求（非流式）
-     */
-    async chat(messages, model = 'claude-sonnet-4-5', options = {}) {
-        console.log('[Vertex] chat() 开始');
-        console.log('[Vertex] 获取 access token...');
-        const accessToken = await this.getAccessToken();
-        console.log('[Vertex] access token 获取成功');
-
-        const url = this._getApiUrl(model, false);
-        console.log(`[Vertex] API URL: ${url}`);
-
-        const requestData = this._convertRequest(messages, model, options);
-
-        log.info(`Vertex AI 请求: ${url}`);
-        log.debug(`请求数据: ${JSON.stringify(requestData).substring(0, 500)}...`);
-
-        const proxyConfig = getAxiosProxyConfig();
-        console.log(`[Vertex] 代理配置: ${JSON.stringify(proxyConfig ? 'enabled' : 'disabled')}`);
-        console.log('[Vertex] 发送请求到 Vertex AI...');
-
-        try {
-            // 构建请求配置
-            const requestConfig = {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 300000,
-                ...proxyConfig
-            };
-
-            // 只有在禁用 SSL 验证且没有代理 agent 时才设置自定义 httpsAgent
-            if (!this.sslVerify && !proxyConfig.httpsAgent) {
-                requestConfig.httpsAgent = new (await import('https')).Agent({ rejectUnauthorized: false });
-            }
-
-            console.log('[Vertex] 请求配置:', {
-                hasHttpsAgent: !!requestConfig.httpsAgent,
-                hasHttpAgent: !!requestConfig.httpAgent,
-                timeout: requestConfig.timeout
-            });
-
-            const response = await axios.post(url, requestData, requestConfig);
-
-            console.log('[Vertex] 请求成功');
-            return response.data;
-        } catch (error) {
-            console.error('[Vertex] 请求失败:', error.message);
-            if (error.cause) {
-                console.error('[Vertex] 错误原因:', error.cause);
-            }
-            if (error.errors) {
-                console.error('[Vertex] 错误详情:', error.errors);
-            }
-            if (error.response) {
-                console.error('[Vertex] 响应状态:', error.response.status);
-                console.error('[Vertex] 响应数据:', JSON.stringify(error.response.data));
-            }
-            throw error;
-        }
-    }
-
-    /**
-     * 发送聊天请求（流式）
-     */
-    async *chatStream(messages, model = 'claude-sonnet-4-5', options = {}) {
-        const accessToken = await this.getAccessToken();
-        const url = this._getApiUrl(model, true);
-        const requestData = this._convertRequest(messages, model, { ...options, stream: true });
-
-        log.info(`Vertex AI 流式请求: ${url}`);
-
-        const proxyConfig = getAxiosProxyConfig();
-        const requestConfig = {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: 300000,
-            responseType: 'stream',
-            ...proxyConfig
-        };
-
-        // 只有在禁用 SSL 验证且没有代理 agent 时才设置自定义 httpsAgent
-        if (!this.sslVerify && !proxyConfig.httpsAgent) {
-            requestConfig.httpsAgent = new (await import('https')).Agent({ rejectUnauthorized: false });
-        }
-
-        console.log(`[Vertex Stream] URL: ${url}`);
-        console.log(`[Vertex Stream] Model: ${model}`);
-        console.log(`[Vertex Stream] Request body: ${JSON.stringify(requestData).substring(0, 500)}`);
-
-        let response;
-        try {
-            response = await axios.post(url, requestData, requestConfig);
-        } catch (error) {
-            console.error('[Vertex Stream] 请求失败:', error.message);
-            if (error.response) {
-                console.error('[Vertex Stream] 响应状态:', error.response.status);
-                // 尝试读取错误响应体
-                if (error.response.data) {
-                    try {
-                        if (typeof error.response.data === 'string') {
-                            console.error('[Vertex Stream] 错误响应:', error.response.data);
-                        } else if (error.response.data.pipe) {
-                            const chunks = [];
-                            for await (const chunk of error.response.data) {
-                                chunks.push(chunk);
-                            }
-                            console.error('[Vertex Stream] 错误响应:', Buffer.concat(chunks).toString());
-                        } else {
-                            console.error('[Vertex Stream] 错误响应:', JSON.stringify(error.response.data));
-                        }
-                    } catch (e) {
-                        console.error('[Vertex Stream] 无法读取错误响应');
-                    }
-                }
-            }
-            throw error;
-        }
-
-        let buffer = '';
-
-        for await (const chunk of response.data) {
-            buffer += chunk.toString();
-
-            // 解析 SSE 事件
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6).trim();
-
-                    if (data === '[DONE]') {
-                        return;
-                    }
-
-                    // 跳过 vertex_event 和 ping
-                    if (data.includes('"type":"vertex_event"') || data.includes('"type":"ping"')) {
-                        continue;
-                    }
-
-                    try {
-                        const parsed = JSON.parse(data);
-                        yield parsed;
-                    } catch (e) {
-                        // 忽略解析错误
-                    }
-                }
-            }
-        }
-
-        // 处理剩余数据
-        if (buffer.trim()) {
-            if (buffer.startsWith('data: ')) {
-                const data = buffer.slice(6).trim();
-                if (data && data !== '[DONE]') {
-                    try {
-                        const parsed = JSON.parse(data);
-                        yield parsed;
-                    } catch (e) {
-                        // 忽略
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Token 计数
-     */
-    async countTokens(messages, model = 'claude-sonnet-4-5', options = {}) {
-        const accessToken = await this.getAccessToken();
-
-        // Token 计数在某些区域不支持，回退到 us-central1
-        let region = this.region;
-        if (region === 'global') {
-            region = 'us-central1';
-        }
-
-        const vertexModel = VERTEX_MODEL_MAPPING[model] || model;
-        const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/${region}/publishers/anthropic/models/${vertexModel}:countTokens`;
-
-        const requestData = {
-            anthropic_version: 'vertex-2023-10-16',
-            messages: messages.map(msg => ({
-                role: msg.role,
-                content: msg.content
-            }))
-        };
-
-        if (options.system) {
-            requestData.system = options.system;
-        }
-
-        const proxyConfig = getAxiosProxyConfig();
-        const response = await axios.post(url, requestData, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: 30000,
-            ...proxyConfig
-        });
-
-        return response.data;
-    }
-
-    /**
-     * 获取支持的模型列表
+     * 获取支持的 Gemini 模型列表
      */
     getModels() {
-        return Object.keys(VERTEX_MODEL_MAPPING);
+        return Object.keys(VERTEX_GEMINI_MODEL_MAPPING);
     }
 
     /**
-     * 获取模型映射
+     * 获取 Gemini 模型映射
      */
     getModelMapping() {
-        return VERTEX_MODEL_MAPPING;
+        return VERTEX_GEMINI_MODEL_MAPPING;
     }
 
     /**
@@ -763,7 +411,7 @@ export class VertexClient {
 }
 
 /**
- * Vertex AI API 服务类（无状态）
+ * Vertex AI API 服务类（无状态）- 仅支持 Gemini
  */
 export class VertexAPI {
     /**
@@ -775,41 +423,33 @@ export class VertexAPI {
     }
 
     /**
-     * 聊天（非流式）
+     * Gemini 聊天（非流式）
      */
-    static async chat(credentials, messages, model, options = {}) {
+    static async chat(credentials, messages, model = 'gemini-1.5-flash', options = {}) {
         const client = VertexClient.fromCredentials(credentials, options.region);
-        return await client.chat(messages, model, options);
+        return await client.geminiChat(messages, model, options);
     }
 
     /**
-     * 聊天（流式）
+     * Gemini 聊天（流式）
      */
-    static async *chatStream(credentials, messages, model, options = {}) {
+    static async *chatStream(credentials, messages, model = 'gemini-1.5-flash', options = {}) {
         const client = VertexClient.fromCredentials(credentials, options.region);
-        yield* client.chatStream(messages, model, options);
+        yield* client.geminiChatStream(messages, model, options);
     }
 
     /**
-     * Token 计数
-     */
-    static async countTokens(credentials, messages, model, options = {}) {
-        const client = VertexClient.fromCredentials(credentials, options.region);
-        return await client.countTokens(messages, model, options);
-    }
-
-    /**
-     * 获取模型列表
+     * 获取 Gemini 模型列表
      */
     static getModels() {
-        return Object.keys(VERTEX_MODEL_MAPPING);
+        return Object.keys(VERTEX_GEMINI_MODEL_MAPPING);
     }
 
     /**
-     * 获取模型映射
+     * 获取 Gemini 模型映射
      */
     static getModelMapping() {
-        return VERTEX_MODEL_MAPPING;
+        return VERTEX_GEMINI_MODEL_MAPPING;
     }
 
     /**
