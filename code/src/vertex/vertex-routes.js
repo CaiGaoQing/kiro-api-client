@@ -4,14 +4,14 @@
  * 支持 Claude 模型（通过 Vertex AI）和 Gemini 模型（通过 Vertex AI 或 Antigravity）
  */
 import { VertexClient, VERTEX_MODEL_MAPPING, VERTEX_GEMINI_MODEL_MAPPING, VERTEX_REGIONS } from './vertex.js';
-import { VertexCredentialStore, GeminiCredentialStore } from './db.js';
+import { VertexCredentialStore, GeminiCredentialStore } from '../db.js';
 import {
     AntigravityApiService,
     GEMINI_MODELS,
     claudeToGeminiMessages,
     geminiToClaudeResponse,
     refreshGeminiToken
-} from './gemini/antigravity-core.js';
+} from '../gemini/antigravity-core.js';
 
 let vertexStore = null;
 let geminiStore = null;

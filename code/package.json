@@ -8,8 +8,8 @@
     "start": "node src/index.js",
     "server": "node src/server.js",
     "server:proxy": "HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890 node src/server.js",
-    "cluster": "node src/cluster.js",
-    "balancer": "node src/balancer.js",
+    "cluster": "node src/cluster/cluster.js",
+    "balancer": "node src/cluster/balancer.js",
     "prod": "node src/balancer.js & node src/cluster.js",
     "test": "node src/test.js"
   },

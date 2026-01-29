@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROTO_DIR = path.join(__dirname, '..', 'warp-protobuf-master');
+const PROTO_DIR = path.join(__dirname, '../..', 'warp-protobuf-master');
 
 // 缓存加载的 root 和消息类型
 let root = null;

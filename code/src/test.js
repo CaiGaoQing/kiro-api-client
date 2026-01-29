@@ -1,7 +1,7 @@
 /**
  * Kiro API 测试脚本
  */
-import { KiroClient } from './client.js';
+import { KiroClient } from './kiro/client.js';
 import { CredentialStore, initDatabase } from './db.js';
 
 async function main() {

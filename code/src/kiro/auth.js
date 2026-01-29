@@ -3,7 +3,7 @@ import http from 'http';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { KIRO_OAUTH_CONFIG, KIRO_CONSTANTS } from './constants.js';
+import { KIRO_OAUTH_CONFIG, KIRO_CONSTANTS } from '../constants.js';
 
 /**
  * 生成 PKCE 代码验证器

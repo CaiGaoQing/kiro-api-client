@@ -4,10 +4,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { KIRO_CONSTANTS, MODEL_MAPPING, KIRO_MODELS, KIRO_OAUTH_CONFIG, buildCodeWhispererUrl } from './constants.js';
-import { CredentialStore } from './db.js';
-import { logger } from './logger.js';
-import { getAxiosProxyConfig } from './proxy.js';
+import { KIRO_CONSTANTS, MODEL_MAPPING, KIRO_MODELS, KIRO_OAUTH_CONFIG, buildCodeWhispererUrl } from '../constants.js';
+import { CredentialStore } from '../db.js';
+import { logger } from '../logger.js';
+import { getAxiosProxyConfig } from '../proxy.js';
 
 const log = logger.client;
 const logToken = logger.token;

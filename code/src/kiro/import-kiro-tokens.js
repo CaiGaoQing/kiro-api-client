@@ -4,7 +4,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { initDatabase, CredentialStore } from './src/db.js';
+import { initDatabase, CredentialStore } from '../db.js';
 
 const KIRO_DIR = 'D:\\个人工作\\ai\\kiro';
 

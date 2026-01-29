@@ -6,9 +6,9 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import os from 'os';
 import crypto from 'crypto';
-import { KIRO_CONSTANTS, MODEL_MAPPING, KIRO_MODELS, buildCodeWhispererUrl } from './constants.js';
-import { logger } from './logger.js';
-import { getAxiosProxyConfig } from './proxy.js';
+import { KIRO_CONSTANTS, MODEL_MAPPING, KIRO_MODELS, buildCodeWhispererUrl } from '../constants.js';
+import { logger } from '../logger.js';
+import { getAxiosProxyConfig } from '../proxy.js';
 
 const log = logger.api;
 

@@ -5,8 +5,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import WebSocket from 'ws';
 import axios from 'axios';
-import { logger } from './logger.js';
-import { getAxiosProxyConfig } from './proxy.js';
+import { logger } from '../logger.js';
+import { getAxiosProxyConfig } from '../proxy.js';
 
 const log = logger.api;
 

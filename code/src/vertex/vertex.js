@@ -4,8 +4,8 @@
  */
 import axios from 'axios';
 import fs from 'fs/promises';
-import { logger } from './logger.js';
-import { getAxiosProxyConfig } from './proxy.js';
+import { logger } from '../logger.js';
+import { getAxiosProxyConfig } from '../proxy.js';
 
 const log = logger.api;
 

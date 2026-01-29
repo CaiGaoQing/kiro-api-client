@@ -3,8 +3,8 @@
  * 提供 Orchids 账户管理和 Token 验证功能
  */
 import axios from 'axios';
-import { logger } from './logger.js';
-import { getAxiosProxyConfig } from './proxy.js';
+import { logger } from '../logger.js';
+import { getAxiosProxyConfig } from '../proxy.js';
 
 const log = logger.api;
 

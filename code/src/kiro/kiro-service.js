@@ -7,9 +7,9 @@ import * as os from 'os';
 import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
-import { KIRO_CONSTANTS, MODEL_MAPPING, KIRO_MODELS, buildCodeWhispererUrl } from './constants.js';
-import { getAxiosProxyConfig } from './proxy.js';
-import { logger } from './logger.js';
+import { KIRO_CONSTANTS, MODEL_MAPPING, KIRO_MODELS, buildCodeWhispererUrl } from '../constants.js';
+import { getAxiosProxyConfig } from '../proxy.js';
+import { logger } from '../logger.js';
 
 const log = logger.client;
 

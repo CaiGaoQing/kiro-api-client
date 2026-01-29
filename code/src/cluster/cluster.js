@@ -23,7 +23,7 @@ function getTimestamp() {
 
 function startInstance(port) {
     const env = { ...process.env, PORT: port.toString() };
-    const child = spawn('node', [join(__dirname, 'server.js')], {
+    const child = spawn('node', [join(__dirname, '..', 'server.js')], {
         env,
         stdio: ['ignore', 'pipe', 'pipe']
     });

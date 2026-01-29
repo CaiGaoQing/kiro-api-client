@@ -4,7 +4,7 @@
 import crypto from 'crypto';
 import https from 'https';
 import { WarpService, WARP_MODELS, refreshAccessToken, isTokenExpired, getEmailFromToken, parseJwtToken, mapModelToWarp } from './warp-service.js';
-import { ApiLogStore } from './db.js';
+import { ApiLogStore } from '../db.js';
 import { WarpMultiAgentService } from './warp-multi-agent.js';
 import { WarpProxy } from './warp-proxy.js';
 
