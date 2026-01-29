@@ -376,6 +376,26 @@ export async function initDatabase() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
+    // 创建 Amazon Bedrock 凭证表
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS bedrock_credentials (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            access_key_id VARCHAR(255) NOT NULL,
+            secret_access_key TEXT NOT NULL,
+            session_token TEXT,
+            region VARCHAR(50) DEFAULT 'us-east-1',
+            is_active TINYINT DEFAULT 1,
+            use_count INT DEFAULT 0,
+            last_used_at DATETIME,
+            error_count INT DEFAULT 0,
+            last_error_at DATETIME,
+            last_error_message TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
     return pool;
 }
 
@@ -3070,6 +3090,158 @@ export class ModelPricingStore {
             outputPrice: row.output_price,
             isActive: row.is_active === 1,
             sortOrder: row.sort_order,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        };
+    }
+}
+
+/**
+ * Amazon Bedrock 凭证管理类
+ */
+export class BedrockCredentialStore {
+    constructor(database) {
+        this.db = database;
+    }
+
+    static async create() {
+        const database = await getDatabase();
+        return new BedrockCredentialStore(database);
+    }
+
+    async add(credential) {
+        const [result] = await this.db.execute(`
+            INSERT INTO bedrock_credentials (name, access_key_id, secret_access_key, session_token, region, is_active)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `, [
+            credential.name,
+            credential.accessKeyId,
+            credential.secretAccessKey,
+            credential.sessionToken || null,
+            credential.region || 'us-east-1',
+            credential.isActive !== false ? 1 : 0
+        ]);
+        return result.insertId;
+    }
+
+    async update(id, credential) {
+        const fields = [];
+        const values = [];
+
+        if (credential.name !== undefined) { fields.push('name = ?'); values.push(credential.name); }
+        if (credential.accessKeyId !== undefined) { fields.push('access_key_id = ?'); values.push(credential.accessKeyId); }
+        if (credential.secretAccessKey !== undefined) { fields.push('secret_access_key = ?'); values.push(credential.secretAccessKey); }
+        if (credential.sessionToken !== undefined) { fields.push('session_token = ?'); values.push(credential.sessionToken); }
+        if (credential.region !== undefined) { fields.push('region = ?'); values.push(credential.region); }
+        if (credential.isActive !== undefined) { fields.push('is_active = ?'); values.push(credential.isActive ? 1 : 0); }
+        if (credential.errorCount !== undefined) { fields.push('error_count = ?'); values.push(credential.errorCount); }
+        if (credential.lastErrorMessage !== undefined) { fields.push('last_error_message = ?'); values.push(credential.lastErrorMessage); }
+
+        if (fields.length === 0) return;
+
+        values.push(id);
+        await this.db.execute(`UPDATE bedrock_credentials SET ${fields.join(', ')} WHERE id = ?`, values);
+    }
+
+    async delete(id) {
+        await this.db.execute('DELETE FROM bedrock_credentials WHERE id = ?', [id]);
+    }
+
+    async getById(id) {
+        const [rows] = await this.db.execute('SELECT * FROM bedrock_credentials WHERE id = ?', [id]);
+        if (rows.length === 0) return null;
+        return this._mapRow(rows[0]);
+    }
+
+    async getByName(name) {
+        const [rows] = await this.db.execute('SELECT * FROM bedrock_credentials WHERE name = ?', [name]);
+        if (rows.length === 0) return null;
+        return this._mapRow(rows[0]);
+    }
+
+    async getAll() {
+        const [rows] = await this.db.execute('SELECT * FROM bedrock_credentials ORDER BY created_at DESC');
+        return rows.map(row => this._mapRow(row));
+    }
+
+    async getAllActive() {
+        const [rows] = await this.db.execute('SELECT * FROM bedrock_credentials WHERE is_active = 1 ORDER BY error_count ASC, updated_at DESC');
+        return rows.map(row => this._mapRow(row));
+    }
+
+    async getRandomActive() {
+        const [rows] = await this.db.execute(`
+            SELECT * FROM bedrock_credentials
+            WHERE is_active = 1 AND error_count < 3
+            ORDER BY use_count ASC, RAND()
+            LIMIT 1
+        `);
+        if (rows.length === 0) return null;
+        return this._mapRow(rows[0]);
+    }
+
+    async setActive(id) {
+        await this.db.execute('UPDATE bedrock_credentials SET is_active = 0');
+        await this.db.execute('UPDATE bedrock_credentials SET is_active = 1 WHERE id = ?', [id]);
+    }
+
+    async incrementUseCount(id) {
+        await this.db.execute(`
+            UPDATE bedrock_credentials SET
+                use_count = use_count + 1,
+                last_used_at = NOW()
+            WHERE id = ?
+        `, [id]);
+    }
+
+    async incrementErrorCount(id, errorMessage) {
+        await this.db.execute(`
+            UPDATE bedrock_credentials SET
+                error_count = error_count + 1,
+                last_error_at = NOW(),
+                last_error_message = ?
+            WHERE id = ?
+        `, [errorMessage, id]);
+    }
+
+    async resetErrorCount(id) {
+        await this.db.execute(`
+            UPDATE bedrock_credentials SET
+                error_count = 0,
+                last_error_at = NULL,
+                last_error_message = NULL
+            WHERE id = ?
+        `, [id]);
+    }
+
+    async getStatistics() {
+        const [total] = await this.db.execute('SELECT COUNT(*) as count FROM bedrock_credentials');
+        const [active] = await this.db.execute('SELECT COUNT(*) as count FROM bedrock_credentials WHERE is_active = 1');
+        const [healthy] = await this.db.execute('SELECT COUNT(*) as count FROM bedrock_credentials WHERE is_active = 1 AND error_count < 3');
+        const [totalUse] = await this.db.execute('SELECT SUM(use_count) as total FROM bedrock_credentials');
+
+        return {
+            total: total[0].count,
+            active: active[0].count,
+            healthy: healthy[0].count,
+            totalUseCount: totalUse[0].total || 0
+        };
+    }
+
+    _mapRow(row) {
+        return {
+            id: row.id,
+            name: row.name,
+            accessKeyId: row.access_key_id,
+            secretAccessKey: row.secret_access_key,
+            sessionToken: row.session_token,
+            region: row.region || 'us-east-1',
+            isActive: row.is_active === 1,
+            useCount: row.use_count || 0,
+            lastUsedAt: row.last_used_at,
+            errorCount: row.error_count || 0,
+            lastErrorAt: row.last_error_at,
+            lastErrorMessage: row.last_error_message,
             createdAt: row.created_at,
             updatedAt: row.updated_at
         };

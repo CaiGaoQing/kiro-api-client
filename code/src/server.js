@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import crypto from 'crypto';
-import { CredentialStore, UserStore, ApiKeyStore, ApiLogStore, GeminiCredentialStore, OrchidsCredentialStore, WarpCredentialStore, TrialApplicationStore, SiteSettingsStore, VertexCredentialStore, ModelPricingStore, initDatabase } from './db.js';
+import { CredentialStore, UserStore, ApiKeyStore, ApiLogStore, GeminiCredentialStore, OrchidsCredentialStore, WarpCredentialStore, TrialApplicationStore, SiteSettingsStore, VertexCredentialStore, BedrockCredentialStore, ModelPricingStore, initDatabase } from './db.js';
 import { KiroClient } from './kiro/client.js';
 import { KiroService } from './kiro/kiro-service.js';
 import { KiroAPI } from './kiro/api.js';
@@ -29,6 +29,7 @@ import {
 } from './gemini/antigravity-core.js';
 import { setupGeminiRoutes } from './gemini/gemini-routes.js';
 import { setupVertexRoutes } from './vertex/vertex-routes.js';
+import bedrockRoutes from './bedrock/bedrock-routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -4509,6 +4510,10 @@ async function start() {
     // 设置 Vertex AI 路由
     await setupVertexRoutes(app);
 
+    // 设置 Bedrock 路由
+    app.use('/api/bedrock', bedrockRoutes);
+    console.log(`[${getTimestamp()}] Bedrock 服务已启动`);
+
     // 启动定时刷新任务
     startCredentialsRefreshTask();
     startErrorCredentialsRefreshTask();
@@ -4525,6 +4530,7 @@ async function start() {
         console.log('[API]   Gemini 格式:  /gemini-antigravity/v1/messages');
         console.log('[API]   Orchids 格式: /orchids/v1/messages');
         console.log('[API]   Vertex 格式:  /vertex/v1/messages');
+        console.log('[API]   Bedrock 格式: /api/bedrock/chat');
         console.log('[API]   模型列表:     /v1/models');
     });
 }

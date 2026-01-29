@@ -155,6 +155,87 @@ export const KIRO_OAUTH_CONFIG = {
 };
 
 /**
+ * Amazon Bedrock 常量配置
+ */
+export const BEDROCK_CONSTANTS = {
+    // API 端点模板
+    RUNTIME_ENDPOINT: 'https://bedrock-runtime.{{region}}.amazonaws.com',
+    INVOKE_MODEL_PATH: '/model/{{modelId}}/invoke',
+    CONVERSE_PATH: '/model/{{modelId}}/converse',
+    CONVERSE_STREAM_PATH: '/model/{{modelId}}/converse-stream',
+
+    // 默认配置
+    DEFAULT_REGION: 'us-east-1',
+    DEFAULT_MODEL: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+    AXIOS_TIMEOUT: 300000, // 5 分钟超时
+
+    // 支持的区域
+    SUPPORTED_REGIONS: [
+        'us-east-1',
+        'us-west-2',
+        'eu-west-1',
+        'eu-west-3',
+        'ap-northeast-1',
+        'ap-southeast-2'
+    ],
+
+    // 服务名称（用于 AWS Signature）
+    SERVICE_NAME: 'bedrock'
+};
+
+/**
+ * Bedrock Claude 模型映射
+ */
+export const BEDROCK_MODEL_MAPPING = {
+    // Claude 4.5 Opus
+    'claude-opus-4-5': 'anthropic.claude-opus-4-5-20251101-v1:0',
+    'claude-opus-4-5-20251101': 'anthropic.claude-opus-4-5-20251101-v1:0',
+    // Claude Sonnet 4.5
+    'claude-sonnet-4-5': 'anthropic.claude-sonnet-4-5-20250929-v1:0',
+    'claude-sonnet-4-5-20250929': 'anthropic.claude-sonnet-4-5-20250929-v1:0',
+    // Claude Sonnet 4
+    'claude-sonnet-4': 'anthropic.claude-sonnet-4-20250514-v1:0',
+    'claude-sonnet-4-20250514': 'anthropic.claude-sonnet-4-20250514-v1:0',
+    // Claude 3.7 Sonnet
+    'claude-3-7-sonnet': 'anthropic.claude-3-7-sonnet-20250219-v1:0',
+    'claude-3-7-sonnet-20250219': 'anthropic.claude-3-7-sonnet-20250219-v1:0',
+    // Claude 3.5 Sonnet v2
+    'claude-3-5-sonnet-v2': 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+    'claude-3-5-sonnet-20241022': 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+    // Claude 3.5 Sonnet v1
+    'claude-3-5-sonnet': 'anthropic.claude-3-5-sonnet-20240620-v1:0',
+    'claude-3-5-sonnet-20240620': 'anthropic.claude-3-5-sonnet-20240620-v1:0',
+    // Claude 3.5 Haiku
+    'claude-3-5-haiku': 'anthropic.claude-3-5-haiku-20241022-v1:0',
+    'claude-3-5-haiku-20241022': 'anthropic.claude-3-5-haiku-20241022-v1:0',
+    // Claude 3 Opus
+    'claude-3-opus': 'anthropic.claude-3-opus-20240229-v1:0',
+    'claude-3-opus-20240229': 'anthropic.claude-3-opus-20240229-v1:0',
+    // Claude 3 Sonnet
+    'claude-3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
+    'claude-3-sonnet-20240229': 'anthropic.claude-3-sonnet-20240229-v1:0',
+    // Claude 3 Haiku
+    'claude-3-haiku': 'anthropic.claude-3-haiku-20240307-v1:0',
+    'claude-3-haiku-20240307': 'anthropic.claude-3-haiku-20240307-v1:0'
+};
+
+/**
+ * Bedrock 支持的模型列表
+ */
+export const BEDROCK_MODELS = [
+    'claude-opus-4-5-20251101',
+    'claude-sonnet-4-5-20250929',
+    'claude-sonnet-4-20250514',
+    'claude-3-7-sonnet-20250219',
+    'claude-3-5-sonnet-20241022',
+    'claude-3-5-sonnet-20240620',
+    'claude-3-5-haiku-20241022',
+    'claude-3-opus-20240229',
+    'claude-3-sonnet-20240229',
+    'claude-3-haiku-20240307'
+];
+
+/**
  * 模型定价配置（美元/百万 tokens）
  */
 export const MODEL_PRICING = {
