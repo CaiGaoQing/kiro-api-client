@@ -11,7 +11,7 @@ services:
       - TZ=Asia/Shanghai
       - BALANCER_PORT=13003
       - BACKEND_HOSTS=api-1:13004,api-2:13005,api-3:13006,api-4:13007,api-5:13008
-    command: ["node", "src/balancer.js"]
+    command: ["node", "src/cluster/balancer.js"]
     depends_on:
       - api-1
       - api-2

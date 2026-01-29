@@ -38,7 +38,7 @@ services:
       - TZ=Asia/Shanghai
       - BALANCER_PORT=${BALANCER_PORT:-13003}
       - BACKEND_PORTS=13004,13005,13006,13007,13008
-    command: ["node", "src/balancer.js"]
+    command: ["node", "src/cluster/balancer.js"]
 
   api-1:
     <<: *api-common
