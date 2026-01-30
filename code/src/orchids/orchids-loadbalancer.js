@@ -28,6 +28,11 @@ export class OrchidsLoadBalancer {
         this.pendingSuccess = new Map();  // accountId -> successCount
         this.pendingFailure = new Map();  // accountId -> failureCount
         
+        // 正在使用的账号（防止并发请求使用同一账号）
+        this.inUseAccounts = new Set();   // accountId 集合
+        this.inUseTimeout = 120000;       // 120秒超时自动释放
+        this.inUseTimers = new Map();     // accountId -> timeout 定时器
+        
         // 定时器
         this.refreshTimer = null;
         this.updateTimer = null;
@@ -190,17 +195,70 @@ export class OrchidsLoadBalancer {
             accounts = accounts.filter(acc => !excludeSet.has(acc.id));
         }
 
-        if (accounts.length === 0) {
+        // 过滤正在使用的账号（防止并发请求使用同一账号）
+        const availableAccounts = accounts.filter(acc => !this.inUseAccounts.has(acc.id));
+        
+        if (availableAccounts.length === 0) {
+            // 如果没有可用账号，记录警告并尝试使用被排除的账号
+            if (accounts.length > 0) {
+                console.warn(`[LoadBalancer] ⚠️ 所有 ${accounts.length} 个账号都在使用中，强制复用账号（可能导致冲突）`);
+                const account = this._selectAccount(accounts);
+                this.scheduleCountUpdate(account.id);
+                this.lockAccount(account.id);
+                return account;
+            }
+            console.error(`[LoadBalancer] ❌ 没有可用账号`);
             return null;
         }
+        
+        console.log(`[LoadBalancer] 选择账号 | 可用: ${availableAccounts.length}/${accounts.length} | 已锁定: ${this.inUseAccounts.size}`);
 
         // 选择账号
-        const account = this._selectAccount(accounts);
+        const account = this._selectAccount(availableAccounts);
 
         // 异步更新请求计数（不阻塞请求处理）
         this.scheduleCountUpdate(account.id);
+        
+        // 锁定账号
+        this.lockAccount(account.id);
 
         return account;
+    }
+    
+    /**
+     * 锁定账号（标记为正在使用）
+     */
+    lockAccount(accountId) {
+        this.inUseAccounts.add(accountId);
+        
+        // 设置超时自动释放（防止异常情况导致账号永久锁定）
+        if (this.inUseTimers.has(accountId)) {
+            clearTimeout(this.inUseTimers.get(accountId));
+        }
+        const timer = setTimeout(() => {
+            this.unlockAccount(accountId);
+            console.warn(`[LoadBalancer] 账号 ${accountId} 自动释放（超时）`);
+        }, this.inUseTimeout);
+        this.inUseTimers.set(accountId, timer);
+        
+        console.log(`[LoadBalancer] 锁定账号 ${accountId} | 当前使用中: ${this.inUseAccounts.size} 个 | 已锁定: [${Array.from(this.inUseAccounts).join(', ')}]`);
+    }
+    
+    /**
+     * 释放账号（标记为可用）
+     */
+    unlockAccount(accountId) {
+        const wasLocked = this.inUseAccounts.has(accountId);
+        this.inUseAccounts.delete(accountId);
+        
+        if (this.inUseTimers.has(accountId)) {
+            clearTimeout(this.inUseTimers.get(accountId));
+            this.inUseTimers.delete(accountId);
+        }
+        
+        if (wasLocked) {
+            console.log(`[LoadBalancer] 释放账号 ${accountId} | 当前使用中: ${this.inUseAccounts.size} 个`);
+        }
     }
 
     /**

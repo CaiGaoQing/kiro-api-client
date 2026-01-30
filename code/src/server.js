@@ -1589,26 +1589,37 @@ app.post('/v1/messages', async (req, res) => {
         // 检查是否需要路由到 Orchids
         const isOrchidsProvider = modelProvider.toLowerCase() === 'orchids' ||
                                   (model && ORCHIDS_MODELS.includes(model));
+        
+        // 详细的路由日志
+        console.log(`[${getTimestamp()}] [路由] model=${model || 'none'} | provider=${modelProvider || 'none'} | isOrchids=${isOrchidsProvider} | ORCHIDS_MODELS=${ORCHIDS_MODELS.join(',')}`);
 
         if (isOrchidsProvider) {
             // 路由到 Orchids 处理
-            // console.log(`[${getTimestamp()}] [API] 请求 ${requestId} 路由到 Orchids Provider | Model: ${model}`);
+            console.log(`[${getTimestamp()}] [API] 请求路由到 Orchids Provider | Model: ${model}`);
             logData.path = '/v1/messages (orchids)';
 
             const { messages, max_tokens, stream, system } = req.body;
 
-            // 获取 Orchids 凭证
-            const orchidsCredentials = await orchidsStore.getAll();
-            if (orchidsCredentials.length === 0) {
-                decrementConcurrent(keyRecord.id, clientIp);
-                logData.statusCode = 503;
-                logData.errorMessage = 'No available Orchids credentials';
-                await apiLogStore.create({ ...logData, durationMs: Date.now() - startTime });
-                return res.status(503).json({ error: { type: 'service_error', message: 'No available Orchids credentials' } });
+            // 使用负载均衡器获取 Orchids 凭证（带锁定机制）
+            let orchidsCredential = null;
+            if (orchidsLoadBalancer) {
+                orchidsCredential = await orchidsLoadBalancer.getNextAccountExcluding([]);
             }
-
-            // 选择活跃凭证或第一个凭证
-            const orchidsCredential = orchidsCredentials.find(c => c.isActive) || orchidsCredentials[0];
+            
+            // 回退：如果负载均衡器未初始化，使用传统方式
+            if (!orchidsCredential) {
+                const orchidsCredentials = await orchidsStore.getAll();
+                if (orchidsCredentials.length === 0) {
+                    decrementConcurrent(keyRecord.id, clientIp);
+                    logData.statusCode = 503;
+                    logData.errorMessage = 'No available Orchids credentials';
+                    await apiLogStore.create({ ...logData, durationMs: Date.now() - startTime });
+                    return res.status(503).json({ error: { type: 'service_error', message: 'No available Orchids credentials' } });
+                }
+                orchidsCredential = orchidsCredentials.find(c => c.isActive) || orchidsCredentials[0];
+            }
+            
+            console.log(`[${getTimestamp()}] [Orchids] /v1/messages 使用账号: ${orchidsCredential.name} (${orchidsCredential.email || 'N/A'})`);
             logData.credentialId = orchidsCredential.id;
             logData.credentialName = orchidsCredential.name;
             logData.model = model || 'claude-sonnet-4-5';
@@ -1634,6 +1645,10 @@ app.post('/v1/messages', async (req, res) => {
                         }
                         logData.outputTokens = outputTokens;
                         logData.statusCode = 200;
+                        // 记录成功
+                        if (orchidsLoadBalancer) {
+                            orchidsLoadBalancer.scheduleSuccessCount(orchidsCredential.id);
+                        }
                     } catch (streamError) {
                         const errorEvent = {
                             type: 'error',
@@ -1642,6 +1657,10 @@ app.post('/v1/messages', async (req, res) => {
                         res.write(`event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`);
                         logData.statusCode = 500;
                         logData.errorMessage = streamError.message;
+                        // 记录失败
+                        if (orchidsLoadBalancer) {
+                            orchidsLoadBalancer.scheduleFailureCount(orchidsCredential.id);
+                        }
                     }
                     res.end();
                 } else {
@@ -1649,12 +1668,24 @@ app.post('/v1/messages', async (req, res) => {
                     logData.outputTokens = response.usage?.output_tokens || 0;
                     logData.statusCode = 200;
                     res.json(response);
+                    // 记录成功
+                    if (orchidsLoadBalancer) {
+                        orchidsLoadBalancer.scheduleSuccessCount(orchidsCredential.id);
+                    }
                 }
             } catch (error) {
                 logData.statusCode = 500;
                 logData.errorMessage = error.message;
                 res.status(500).json({ error: { type: 'api_error', message: error.message } });
+                // 记录失败
+                if (orchidsLoadBalancer) {
+                    orchidsLoadBalancer.scheduleFailureCount(orchidsCredential.id);
+                }
             } finally {
+                // 释放账号锁定
+                if (orchidsLoadBalancer && orchidsCredential) {
+                    orchidsLoadBalancer.unlockAccount(orchidsCredential.id);
+                }
                 decrementConcurrent(keyRecord.id, clientIp);
                 await apiLogStore.create({ ...logData, durationMs: Date.now() - startTime });
             }
@@ -2303,6 +2334,18 @@ async function handleOrchidsRequest(req, res) {
             res.status(500).json({ error: { type: 'api_error', message: error.message } });
         }
     } finally {
+        // 释放所有使用过的账号
+        if (orchidsLoadBalancer) {
+            if (currentCredential) {
+                orchidsLoadBalancer.unlockAccount(currentCredential.id);
+            }
+            // 释放失败的账号
+            for (const failedId of failedAccountIds) {
+                if (failedId !== currentCredential?.id) {
+                    orchidsLoadBalancer.unlockAccount(failedId);
+                }
+            }
+        }
         if (keyRecord) {
             decrementConcurrent(keyRecord.id, clientIp);
         }
@@ -4614,6 +4657,7 @@ async function start() {
         console.log('[API]   OpenAI 格式:  /v1/chat/completions');
         console.log('[API]   Gemini 格式:  /gemini-antigravity/v1/messages');
         console.log('[API]   Orchids 格式: /orchids/v1/messages');
+        console.log('[API]   Warp 格式:    /w/v1/messages');
         console.log('[API]   Vertex 格式:  /vertex/v1/messages');
         console.log('[API]   Bedrock 格式: /api/bedrock/chat');
         console.log('[API]   模型列表:     /v1/models');
