@@ -1,0 +1,4 @@
+# Orchids 自动注册脚本依赖
+undetected-chromedriver>=3.5.0
+selenium>=4.15.0
+requests>=2.31.0

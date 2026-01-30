@@ -3,68 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orchids 账号管理 - Kiro Account Manager</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Orchids 账号管理 - All-2-API</title>
     <link rel="stylesheet" href="/css/common.css">
-    <link rel="stylesheet" href="/css/styles.css">
     <link rel="stylesheet" href="/css/orchids.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="app-container">
+        <!-- Sidebar - 动态加载 -->
         <div id="sidebar-container"></div>
 
+        <!-- Main Content -->
         <main class="main-content">
-            <!-- Header -->
-            <header class="header">
+            <header class="page-header">
                 <div class="header-left">
-                    <div class="page-title-section">
-                        <div class="page-icon orchids-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-                                <path d="M12 6v6l4 2"/>
-                            </svg>
-                        </div>
-                        <div>
-                            <h1 class="page-title">Orchids 账号管理</h1>
-                            <p class="page-subtitle">管理您的 Orchids API 凭证</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="header-center">
-                    <div class="search-box">
-                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"/>
-                            <path d="M21 21l-4.35-4.35"/>
+                    <div class="page-icon orchids-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M12 8a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4z"/>
                         </svg>
-                        <input type="text" id="search-input" placeholder="搜索账号名称、邮箱...">
-                        <span class="search-shortcut">⌘K</span>
+                    </div>
+                    <div>
+                        <h1 class="page-title">Orchids 账号管理</h1>
+                        <p class="page-subtitle">管理您的 Orchids AI 账号池</p>
                     </div>
                 </div>
                 <div class="header-right">
-                    <button class="btn btn-secondary" id="batch-import-btn">
+                    <button class="btn btn-warning" id="auto-register-btn" title="自动注册新账号">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 6v6l4 2"/>
+                        </svg>
+                        自动注册
+                    </button>
+                    <button class="btn btn-success" id="refresh-all-btn" title="刷新全部">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                        </svg>
+                        刷新
+                    </button>
+                    <button class="btn btn-secondary" id="batch-import-btn" title="批量导入">
                         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                             <polyline points="17 8 12 3 7 8"/>
                             <line x1="12" y1="3" x2="12" y2="15"/>
                         </svg>
-                        批量导入
+                        导入
                     </button>
-                    <button class="btn btn-primary" id="add-account-btn">
+                    <button class="btn btn-secondary" id="export-btn" title="导出数据">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        导出
+                    </button>
+                    <button class="btn btn-primary" id="add-account-btn" title="添加账号">
                         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="12" y1="5" x2="12" y2="19"/>
                             <line x1="5" y1="12" x2="19" y2="12"/>
                         </svg>
-                        添加账号
+                        添加
                     </button>
                 </div>
             </header>
 
-            <!-- Statistics Cards -->
+            <!-- Stats Cards -->
             <div class="stats-cards orchids-stats">
                 <div class="stat-card">
-             <div class="stat-icon orchids-gradient">
+                    <div class="stat-icon orchids-gradient">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                             <circle cx="9" cy="7" r="4"/>
@@ -106,12 +114,60 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"/>
                             <line x1="15" y1="9" x2="9" y2="15"/>
-                         <line x1="9" y1="9" x2="15" y2="15"/>
+                            <line x1="9" y1="9" x2="15" y2="15"/>
                         </svg>
                     </div>
                     <div class="stat-content">
                         <div class="stat-value" id="stat-error">0</div>
                         <div class="stat-label">异常账号</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="stat-healthy">0</div>
+                        <div class="stat-label">激活账号</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="stat-request-count">0</div>
+                        <div class="stat-label">总请求数</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon success">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="stat-success-count">0</div>
+                        <div class="stat-label">成功请求</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon error">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="15" y1="9" x2="9" y2="15"/>
+                            <line x1="9" y1="9" x2="15" y2="15"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="stat-failure-count">0</div>
+                        <div class="stat-label">失败请求</div>
                     </div>
                 </div>
             </div>
@@ -121,12 +177,13 @@
                 <!-- Toolbar -->
                 <div class="content-toolbar">
                     <div class="toolbar-left">
-                        <div class="select-all-wrapper">
-                            <input type="checkbox" class="checkbox-custom" id="select-all">
-                            <label class="select-label" for="select-all">全选</label>
+                        <div class="search-box">
+                            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                            <input type="text" id="search-input" placeholder="搜索账号...">
                         </div>
-                        <div class="toolbar-divider"></div>
-                        <span class="account-count">共 <strong id="displayed-count">0</strong> 个账号</span>
                     </div>
                     <div class="toolbar-right">
                         <div class="view-toggle">
@@ -134,11 +191,11 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <rect x="3" y="3" width="7" height="7"/>
                                     <rect x="14" y="3" width="7" height="7"/>
-                                    <rect x="3" y="14" width="7" height="7"/>
                                     <rect x="14" y="14" width="7" height="7"/>
+                                    <rect x="3" y="14" width="7" height="7"/>
                                 </svg>
                             </button>
-                            <button class="view-btn" data-view="list" title="列">
+                            <button class="view-btn" data-view="list" title="列表视图">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="8" y1="6" x2="21" y2="6"/>
                                     <line x1="8" y1="12" x2="21" y2="12"/>
@@ -149,28 +206,18 @@
                                 </svg>
                             </button>
                         </div>
-                        <div class="toolbar-divider"></div>
-                        <button class="btn btn-secondary btn-sm" id="batch-test-btn">
-                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                            </svg>
-                            批量测试
-                        </button>
-                        <button class="btn btn-danger btn-sm" id="batch-delete-btn" style="display: none;">
-                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="3 6 5 6 21 6"/>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                            </svg>
-                            删除选中 (<span id="selected-count">0</span>)
-                        </button>
                     </div>
                 </div>
 
                 <!-- Cards Grid -->
-                <div class="orchids-grid" id="cards-grid"></div>
+                <div class="orchids-grid" id="cards-grid">
+                    <!-- Items will be rendered here via JS -->
+                </div>
 
                 <!-- List View -->
-                <div class="orchids-list" id="list-view" style="display: none;"></div>
+                <div class="orchids-list" id="list-view" style="display: none;">
+                    <!-- Items will be rendered here via JS -->
+                </div>
 
                 <!-- Empty State -->
                 <div class="empty-state" id="empty-state" style="display: none;">
@@ -232,35 +279,13 @@
                     <div class="form-group">
                         <label class="form-label">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                                <circle cx="12" cy="7" r="4"/>
-                            </svg>
-                            账号名称 <span class="required">*</span>
-                        </label>
-                        <input type="text" class="form-input" id="account-name" placeholder="例如: my-orchids-account" required>
-                        <p class="form-hint">用于识别此账号的唯一名称</p>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                                <polyline points="22,6 12,13 2,6"/>
-                            </svg>
-                            邮箱地址
-                        </label>
-                        <input type="email" class="form-input" id="account-email" placeholder="user@example.com">
-                        <p class="form-hint">可选，用于标识账号所属</p>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                                 <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                             </svg>
-                            Client JWT Token <span class="required">*</span>
+                            Client Cookie (__client) <span class="required">*</span>
                         </label>
                         <div class="textarea-wrapper">
-                            <textarea class="form-textarea" id="client-jwt" rows="5" placeholder="粘贴您的 Clerk Client JWT Token..." required></textarea>
+                            <textarea class="form-textarea" id="client-jwt" rows="5" placeholder="只需粘贴 __client cookie 值，其他信息将自动获取..." required></textarea>
                             <button type="button" class="paste-btn" id="paste-jwt-btn" title="粘贴">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
@@ -268,18 +293,39 @@
                                 </svg>
                             </button>
                         </div>
-                        <p class="form-hint">从浏览器 Cookie 中获取 __client 的值</p>
+                        <p class="form-hint">从浏览器 Cookie 中获取 __client 的值，系统将自动获取邮箱、用户ID等信息</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            账号名称 <span class="optional">(可选)</span>
+                        </label>
+                        <input type="text" class="form-input" id="account-name" placeholder="留空将使用邮箱作为名称">
+                        <p class="form-hint">可选，留空将自动使用获取到的邮箱地址</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                            </svg>
+                            负载均衡权重 <span class="optional">(可选)</span>
+                        </label>
+                        <input type="number" class="form-input" id="account-weight" value="1" min="1" placeholder="用于负载均衡，默认1">
+                        <p class="form-hint">用于负载均衡，值越大被选中的概率越高</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="modal-cancel">取消</button>
+                        <button type="submit" class="btn btn-primary">
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            添加账号
+                        </button>
                     </div>
                 </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="modal-cancel">取消</button>
-                <button class="btn btn-primary" id="modal-submit">
-                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    添加账号
-                </button>
             </div>
         </div>
     </div>
@@ -313,70 +359,71 @@
                     <button class="import-tab active" data-tab="json">JSON 格式</button>
                     <button class="import-tab" data-tab="text">文本格式</button>
                 </div>
-                <div class="import-content">
-                    <div class="import-panel active" id="json-panel">
-                        <div class="form-group">
-                            <label class="form-label">JSON 数据</label>
-                            <textarea class="form-textarea code-textarea" id="batch-import-json" rows="10" placeholder='[
+                <form id="batch-import-form">
+                    <div class="import-content">
+                        <div class="import-panel active" id="json-panel">
+                            <div class="form-group">
+                                <label class="form-label">JSON 数据</label>
+                                <textarea class="form-textarea code-textarea" id="batch-import-json" rows="10" placeholder='[
   {"email": "user1@example.com", "clientJwt": "eyJhbGc..."},
   {"email": "user2@example.com", "refreshToken": "eyJhbGc..."}
 ]'></textarea>
+                            </div>
                         </div>
-                    </div>
-                    <div class="import-panel" id="text-panel">
-                        <div class="form-group">
-                            <label class="form-label">文本数据（每行一个账号）</label>
-                            <textarea class="form-textarea code-textarea" id="batch-import-text" rows="10" placeholder="user1@example.com eyJhbGc...
+                        <div class="import-panel" id="text-panel">
+                            <div class="form-group">
+                                <label class="form-label">文本数据（每行一个账号）</label>
+                                <textarea class="form-textarea code-textarea" id="batch-import-text" rows="10" placeholder="user1@example.com eyJhbGc...
 user2@example.com eyJhbGc..."></textarea>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="import-help">
-                    <div class="help-title">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                            <line x1="12" y1="17" x2="12.01" y2="17"/>
-                        </svg>
-                        支持的字段
+                    <div class="import-help">
+                        <div class="help-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            支持的字段
+                        </div>
+                        <div class="help-tags">
+                            <span class="help-tag">email (可选)</span>
+                            <span class="help-tag">clientJwt (必填)</span>
+                            <span class="help-tag">refreshToken (可选)</span>
+                            <span class="help-tag">name (可选)</span>
+                        </div>
                     </div>
-                    <div class="help-tags">
-                        <span class="help-tag">email</span>
-                        <span class="help-tag">clientJwt</span>
-                        <span class="help-tag">client_jwt</span>
-                        <span class="help-tag">refreshToken</span>
-                        <span class="help-tag">refresh_token</span>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="batch-cancel">取消</button>
+                        <button type="submit" class="btn btn-primary">
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            开始导入
+                        </button>
                     </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="batch-modal-cancel">取消</button>
-                <button class="btn btn-primary" id="batch-modal-submit">
-                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="17 8 12 3 7 8"/>
-                        <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    开始导入
-                </button>
+                </form>
             </div>
         </div>
     </div>
 
-    <!-- Account Detail Modal -->
+    <!-- Detail Modal -->
     <div class="modal-overlay" id="detail-modal">
-        <div class="modal orchids-modal modal-lg">
+        <div class="modal orchids-modal">
             <div class="modal-header">
                 <div class="modal-header-content">
-                    <div class="modal-icon" id="detail-modal-icon">
+                    <div class="modal-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                             <circle cx="12" cy="7" r="4"/>
                         </svg>
                     </div>
                     <div>
-                        <h2 class="modal-title" id="detail-modal-title">账号详情</h2>
-                        <p class="modal-subtitle" id="detail-modal-subtitle">查看和管理账号信息</p>
+                        <h2 class="modal-title">账号详情</h2>
+                        <p class="modal-subtitle" id="detail-name">Loading...</p>
                     </div>
                 </div>
                 <button class="modal-close" id="detail-modal-close">
@@ -386,68 +433,156 @@ user2@example.com eyJhbGc..."></textarea>
                     </svg>
                 </button>
             </div>
-            <div class="modal-body" id="detail-modal-body">
-                <!-- Dynamic content -->
+            <div class="modal-body">
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">邮箱</span>
+                        <span class="detail-value" id="detail-email"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">状态</span>
+                        <span class="detail-value" id="detail-status"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">权重</span>
+                        <span class="detail-value" id="detail-weight"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">总请求数</span>
+                        <span class="detail-value" id="detail-request-count"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">成功请求</span>
+                        <span class="detail-value success" id="detail-success-count"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">失败请求</span>
+                        <span class="detail-value error" id="detail-failure-count"></span>
+                    </div>
+                </div>
+                <div class="detail-actions">
+                    <button class="btn btn-secondary" id="detail-edit-weight-btn">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                        编辑权重
+                    </button>
+                    <button class="btn btn-secondary" id="detail-reset-stats-btn">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.5-4.5M22 12.5a10 10 0 0 1-18.5 4.5"/>
+                        </svg>
+                        重置统计
+                    </button>
+                </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="detail-modal-cancel">关闭</button>
-                <button class="btn btn-danger" id="detail-delete-btn">
-                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                    删除账号
-                </button>
-                <button class="btn btn-primary" id="detail-test-btn">
-                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                    </svg>
-                    测试连接
-                </button>
+                <button class="btn btn-danger" id="detail-delete-btn">删除账号</button>
+                <button class="btn btn-primary" onclick="closeDetailModal()">关闭</button>
             </div>
         </div>
     </div>
 
-    <!-- Context Menu -->
-    <div class="context-menu" id="context-menu">
-        <div class="context-menu-item" data-action="detail">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="16" x2="12" y2="12"/>
-                <line x1="12" y1="8" x2="12.01" y2="8"/>
-            </svg>
-            查看详情
-        </div>
-        <div class="context-menu-item" data-action="test">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            测试连接
-        </div>
-        <div class="context-menu-item" data-action="copy">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            复制 Token
-        </div>
-        <div class="context-menu-divider"></div>
-        <div class="context-menu-item" data-action="activate">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                <polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-            设为活跃
-        </div>
-        <div class="context-menu-divider"></div>
-        <div class="context-menu-item danger" data-action="delete">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                <line x1="10" y1="11" x2="10" y2="17"/>
-                <line x1="14" y1="11" x2="14" y2="17"/>
-            </svg>
-            删除账号
+    <!-- Auto Register Modal -->
+    <div class="modal-overlay" id="register-modal">
+        <div class="modal orchids-modal modal-lg">
+            <div class="modal-header">
+                <div class="modal-header-content">
+                    <div class="modal-icon register-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+                            <path d="M12 6v6l4 2"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="modal-title">自动注册账号</h2>
+                        <p class="modal-subtitle">使用 Selenium 自动注册 Orchids 账号</p>
+                    </div>
+                </div>
+                <button class="modal-close" id="register-modal-close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- 配置区 -->
+                <div class="register-config" id="register-config">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                            注册数量
+                        </label>
+                        <input type="number" class="form-input" id="register-count" value="1" min="1" max="50">
+                        <p class="form-hint">每个账号注册约需要 1-2 分钟</p>
+                    </div>
+                    <div class="register-requirements">
+                        <div class="requirement-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            前置要求
+                        </div>
+                        <ul class="requirement-list">
+                            <li>安装 Python 3.8+</li>
+                            <li>安装 Chrome 浏览器</li>
+                            <li>安装依赖: <code>pip install undetected-chromedriver selenium requests</code></li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- 进度区 -->
+                <div class="register-progress" id="register-progress" style="display: none;">
+                    <div class="progress-header">
+                        <div class="progress-stats">
+                            <span class="progress-stat">
+                                <span class="stat-label">进度</span>
+                                <span class="stat-value" id="progress-current">0</span>/<span id="progress-total">0</span>
+                            </span>
+                            <span class="progress-stat success">
+                                <span class="stat-label">成功</span>
+                                <span class="stat-value" id="progress-success">0</span>
+                            </span>
+                            <span class="progress-stat error">
+                                <span class="stat-label">失败</span>
+                                <span class="stat-value" id="progress-failed">0</span>
+                            </span>
+                        </div>
+                        <div class="progress-status" id="progress-status">运行中...</div>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="register-logs" id="register-logs">
+                        <!-- 日志会动态添加 -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="register-modal-cancel">关闭</button>
+                <button class="btn btn-danger" id="register-cancel-btn" style="display: none;">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="15" y1="9" x2="9" y2="15"/>
+                        <line x1="9" y1="9" x2="15" y2="15"/>
+                    </svg>
+                    取消任务
+                </button>
+                <button class="btn btn-primary" id="register-start-btn">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    开始注册
+                </button>
+            </div>
         </div>
     </div>
 

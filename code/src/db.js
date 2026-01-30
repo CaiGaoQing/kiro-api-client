@@ -191,6 +191,11 @@ export async function initDatabase() {
             user_id VARCHAR(255),
             expires_at VARCHAR(50),
             is_active TINYINT DEFAULT 1,
+            weight INT DEFAULT 1,
+            request_count BIGINT DEFAULT 0,
+            success_count BIGINT DEFAULT 0,
+            failure_count BIGINT DEFAULT 0,
+            last_used_at DATETIME,
             usage_data JSON,
             usage_updated_at DATETIME,
             error_count INT DEFAULT 0,
@@ -200,6 +205,23 @@ export async function initDatabase() {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+
+    // 添加 Orchids 凭证表新字段（迁移兼容）
+    try {
+        await pool.execute(`ALTER TABLE orchids_credentials ADD COLUMN weight INT DEFAULT 1 AFTER is_active`);
+    } catch (e) { /* 字段可能已存在 */ }
+    try {
+        await pool.execute(`ALTER TABLE orchids_credentials ADD COLUMN request_count BIGINT DEFAULT 0 AFTER weight`);
+    } catch (e) { /* 字段可能已存在 */ }
+    try {
+        await pool.execute(`ALTER TABLE orchids_credentials ADD COLUMN success_count BIGINT DEFAULT 0 AFTER request_count`);
+    } catch (e) { /* 字段可能已存在 */ }
+    try {
+        await pool.execute(`ALTER TABLE orchids_credentials ADD COLUMN failure_count BIGINT DEFAULT 0 AFTER success_count`);
+    } catch (e) { /* 字段可能已存在 */ }
+    try {
+        await pool.execute(`ALTER TABLE orchids_credentials ADD COLUMN last_used_at DATETIME AFTER failure_count`);
+    } catch (e) { /* 字段可能已存在 */ }
 
     // 创建 Orchids 错误凭证表
     await pool.execute(`
@@ -1811,45 +1833,44 @@ export class OrchidsCredentialStore {
 
     async add(credential) {
         const [result] = await this.db.execute(`
-            INSERT INTO orchids_credentials (name, email, client_jwt, clerk_session_id, user_id, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO orchids_credentials (name, email, client_jwt, clerk_session_id, user_id, expires_at, weight, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             credential.name,
             credential.email || null,
             credential.clientJwt,
             credential.clerkSessionId || null,
             credential.userId || null,
-            credential.expiresAt || null
+            credential.expiresAt || null,
+            credential.weight || 1,
+            credential.isActive !== false ? 1 : 0
         ]);
         return result.insertId;
     }
 
     async update(id, credential) {
         const toNull = (val) => val === undefined ? null : val;
-        await this.db.execute(`
-            UPDATE orchids_credentials SET
-                name = COALESCE(?, name),
-                email = COALESCE(?, email),
-                client_jwt = COALESCE(?, client_jwt),
-                clerk_session_id = COALESCE(?, clerk_session_id),
-                user_id = COALESCE(?, user_id),
-                expires_at = COALESCE(?, expires_at),
-                error_count = COALESCE(?, error_count),
-                last_error_at = COALESCE(?, last_error_at),
-                last_error_message = COALESCE(?, last_error_message)
-            WHERE id = ?
-        `, [
-            toNull(credential.name),
-            toNull(credential.email),
-            toNull(credential.clientJwt),
-            toNull(credential.clerkSessionId),
-            toNull(credential.userId),
-            toNull(credential.expiresAt),
-            toNull(credential.errorCount),
-            toNull(credential.lastErrorAt),
-            toNull(credential.lastErrorMessage),
-            id
-        ]);
+        
+        // 构建动态更新语句
+        const updates = [];
+        const values = [];
+        
+        if (credential.name !== undefined) { updates.push('name = ?'); values.push(credential.name); }
+        if (credential.email !== undefined) { updates.push('email = ?'); values.push(credential.email); }
+        if (credential.clientJwt !== undefined) { updates.push('client_jwt = ?'); values.push(credential.clientJwt); }
+        if (credential.clerkSessionId !== undefined) { updates.push('clerk_session_id = ?'); values.push(credential.clerkSessionId); }
+        if (credential.userId !== undefined) { updates.push('user_id = ?'); values.push(credential.userId); }
+        if (credential.expiresAt !== undefined) { updates.push('expires_at = ?'); values.push(credential.expiresAt); }
+        if (credential.isActive !== undefined) { updates.push('is_active = ?'); values.push(credential.isActive ? 1 : 0); }
+        if (credential.weight !== undefined) { updates.push('weight = ?'); values.push(credential.weight); }
+        if (credential.errorCount !== undefined) { updates.push('error_count = ?'); values.push(credential.errorCount); }
+        if (credential.lastErrorAt !== undefined) { updates.push('last_error_at = ?'); values.push(credential.lastErrorAt); }
+        if (credential.lastErrorMessage !== undefined) { updates.push('last_error_message = ?'); values.push(credential.lastErrorMessage); }
+        
+        if (updates.length === 0) return;
+        
+        values.push(id);
+        await this.db.execute(`UPDATE orchids_credentials SET ${updates.join(', ')} WHERE id = ?`, values);
     }
 
     async delete(id) {
@@ -1929,6 +1950,11 @@ export class OrchidsCredentialStore {
             userId: row.user_id,
             expiresAt: row.expires_at,
             isActive: row.is_active === 1,
+            weight: row.weight || 1,
+            requestCount: row.request_count || 0,
+            successCount: row.success_count || 0,
+            failureCount: row.failure_count || 0,
+            lastUsedAt: row.last_used_at,
             usageData: row.usage_data ? (typeof row.usage_data === 'string' ? JSON.parse(row.usage_data) : row.usage_data) : null,
             usageUpdatedAt: row.usage_updated_at,
             errorCount: row.error_count || 0,
@@ -1937,6 +1963,82 @@ export class OrchidsCredentialStore {
             createdAt: row.created_at,
             updatedAt: row.updated_at
         };
+    }
+
+    // ============ 负载均衡相关方法 ============
+
+    /**
+     * 获取所有已启用的账号（用于负载均衡）
+     */
+    async getEnabledAccounts() {
+        const [rows] = await this.db.execute(
+            'SELECT * FROM orchids_credentials WHERE is_active = 1 AND error_count < 5 ORDER BY weight DESC, error_count ASC'
+        );
+        return rows.map(row => this._mapRow(row));
+    }
+
+    /**
+     * 更新权重
+     */
+    async updateWeight(id, weight) {
+        await this.db.execute('UPDATE orchids_credentials SET weight = ? WHERE id = ?', [weight, id]);
+    }
+
+    /**
+     * 增加请求计数
+     */
+    async addRequestCount(id, count = 1) {
+        await this.db.execute(
+            'UPDATE orchids_credentials SET request_count = request_count + ?, last_used_at = NOW() WHERE id = ?',
+            [count, id]
+        );
+    }
+
+    /**
+     * 增加成功计数
+     */
+    async addSuccessCount(id, count = 1) {
+        await this.db.execute(
+            'UPDATE orchids_credentials SET success_count = success_count + ? WHERE id = ?',
+            [count, id]
+        );
+    }
+
+    /**
+     * 增加失败计数
+     */
+    async addFailureCount(id, count = 1) {
+        await this.db.execute(
+            'UPDATE orchids_credentials SET failure_count = failure_count + ? WHERE id = ?',
+            [count, id]
+        );
+    }
+
+    /**
+     * 重置统计计数
+     */
+    async resetCounts(id) {
+        await this.db.execute(
+            'UPDATE orchids_credentials SET request_count = 0, success_count = 0, failure_count = 0 WHERE id = ?',
+            [id]
+        );
+    }
+
+    /**
+     * 获取统计汇总
+     */
+    async getStats() {
+        const [rows] = await this.db.execute(`
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as enabled,
+                SUM(CASE WHEN error_count > 0 THEN 1 ELSE 0 END) as error,
+                SUM(request_count) as total_requests,
+                SUM(success_count) as total_success,
+                SUM(failure_count) as total_failure
+            FROM orchids_credentials
+        `);
+        return rows[0];
     }
 
     // ============ 错误凭证管理 ============

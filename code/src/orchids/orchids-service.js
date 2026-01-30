@@ -1,6 +1,7 @@
 /**
  * Orchids API 服务
  * 提供 Orchids 账户管理和 Token 验证功能
+ * 整合自 orchids-api-main 的功能
  */
 import axios from 'axios';
 import { logger } from '../logger.js';
@@ -13,11 +14,13 @@ const log = logger.api;
  */
 export const ORCHIDS_CONSTANTS = {
     CLERK_CLIENT_URL: 'https://clerk.orchids.app/v1/client',
+    CLERK_CLIENT_URL_V2: 'https://clerk.orchids.app/v1/client?__clerk_api_version=2025-11-10&_clerk_js_version=5.117.0',
     CLERK_TOKEN_URL: 'https://clerk.orchids.app/v1/client/sessions/{sessionId}/tokens',
-    CLERK_JS_VERSION: '5.114.0',
-    USER_AGENT: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    CLERK_JS_VERSION: '5.117.0',
+    USER_AGENT: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Orchids/0.0.57 Chrome/138.0.7204.251 Electron/37.10.3 Safari/537.36',
     ORIGIN: 'https://www.orchids.app',
     DEFAULT_TIMEOUT: 30000,
+    DEFAULT_PROJECT_ID: '280b7bae-cd29-41e4-a0a6-7f603c43b607',
 };
 
 /**
@@ -25,24 +28,26 @@ export const ORCHIDS_CONSTANTS = {
  */
 export class OrchidsAPI {
     /**
-     * 从 clientJwt 获取 session 信息
-     * @param {string} clientJwt - Clerk client JWT token
-     * @returns {Promise<Object>} {success, sessionId, userId, wsToken, expiresAt, error}
+     * 从 clientJwt 获取完整账号信息（包括 email）
+     * 参考 orchids-api-main 的 clerk.go 实现
+     * @param {string} clientJwt - Clerk client JWT token (__client cookie 值)
+     * @returns {Promise<Object>} {success, sessionId, userId, email, wsToken, expiresAt, clientUat, projectId, error}
      */
-    static async getSessionFromClerk(clientJwt) {
+    static async getFullAccountInfo(clientJwt) {
         if (!clientJwt) {
             return { success: false, error: '缺少 clientJwt' };
         }
 
-        log.info('从 Clerk API 获取 session 信息');
+        log.info('从 Clerk API 获取完整账号信息');
 
         try {
             const proxyConfig = getAxiosProxyConfig();
-            const response = await axios.get(ORCHIDS_CONSTANTS.CLERK_CLIENT_URL, {
+            const response = await axios.get(ORCHIDS_CONSTANTS.CLERK_CLIENT_URL_V2, {
                 headers: {
                     'Cookie': `__client=${clientJwt}`,
                     'Origin': ORCHIDS_CONSTANTS.ORIGIN,
                     'User-Agent': ORCHIDS_CONSTANTS.USER_AGENT,
+                    'Accept-Language': 'zh-CN',
                 },
                 timeout: ORCHIDS_CONSTANTS.DEFAULT_TIMEOUT,
                 ...proxyConfig
@@ -63,9 +68,15 @@ export class OrchidsAPI {
             }
 
             const session = sessions[0];
-            const sessionId = session.id;
+            const sessionId = responseData.last_active_session_id || session.id;
             const userId = session.user?.id;
             const wsToken = session.last_active_token?.jwt;
+            
+            // 获取 email - 从 email_addresses 数组中提取
+            let email = null;
+            if (session.user?.email_addresses && session.user.email_addresses.length > 0) {
+                email = session.user.email_addresses[0].email_address;
+            }
 
             if (!sessionId || !wsToken) {
                 log.error('Session 数据无效');
@@ -75,28 +86,54 @@ export class OrchidsAPI {
             // 解析 JWT 过期时间
             const expiresAt = this._parseJwtExpiry(wsToken);
 
-            log.success('成功获取 session 信息');
+            log.success('成功获取完整账号信息');
             log.info(`Session ID: ${sessionId}`);
             log.info(`User ID: ${userId || 'unknown'}`);
+            log.info(`Email: ${email || 'unknown'}`);
             log.info(`Token 过期时间: ${expiresAt || '未知'}`);
 
             return {
                 success: true,
                 sessionId,
                 userId,
+                email,
                 wsToken,
-                expiresAt
+                expiresAt,
+                clientUat: Math.floor(Date.now() / 1000).toString(),
+                projectId: ORCHIDS_CONSTANTS.DEFAULT_PROJECT_ID
             };
 
         } catch (error) {
             const errorMsg = error.response?.data?.message || error.message;
-            log.fail(`获取 session 失败: ${errorMsg}`, error.response?.status);
+            log.fail(`获取账号信息失败: ${errorMsg}`, error.response?.status);
             return {
                 success: false,
                 error: errorMsg,
                 statusCode: error.response?.status
             };
         }
+    }
+
+    /**
+     * 从 clientJwt 获取 session 信息（兼容旧版）
+     * @param {string} clientJwt - Clerk client JWT token
+     * @returns {Promise<Object>} {success, sessionId, userId, wsToken, expiresAt, email, error}
+     */
+    static async getSessionFromClerk(clientJwt) {
+        // 使用新的完整方法获取信息
+        const result = await this.getFullAccountInfo(clientJwt);
+        if (!result.success) {
+            return result;
+        }
+        
+        return {
+            success: true,
+            sessionId: result.sessionId,
+            userId: result.userId,
+            wsToken: result.wsToken,
+            expiresAt: result.expiresAt,
+            email: result.email
+        };
     }
 
     /**
@@ -230,6 +267,83 @@ export class OrchidsAPI {
         }
 
         return results;
+    }
+
+    /**
+     * 测试账号激活状态
+     * 发送一个简单的测试请求验证账号是否可用
+     * @param {string} clientJwt - Clerk client JWT token
+     * @returns {Promise<Object>} {success, isHealthy, durationMs, response, error}
+     */
+    static async testAccountHealth(clientJwt) {
+        const startTime = Date.now();
+        
+        try {
+            const result = await this.getFullAccountInfo(clientJwt);
+            const durationMs = Date.now() - startTime;
+            
+            if (!result.success) {
+                return {
+                    success: false,
+                    isHealthy: false,
+                    durationMs,
+                    error: result.error
+                };
+            }
+            
+            return {
+                success: true,
+                isHealthy: true,
+                durationMs,
+                response: `Session: ${result.sessionId}, Email: ${result.email || 'N/A'}`,
+                data: result
+            };
+        } catch (error) {
+            const durationMs = Date.now() - startTime;
+            return {
+                success: false,
+                isHealthy: false,
+                durationMs,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * 批量检查账号健康状态
+     * @param {Array} credentials - 凭证数组 [{id, clientJwt}]
+     * @returns {Promise<Object>} {accounts: [{accountId, isHealthy}]}
+     */
+    static async batchHealthCheck(credentials) {
+        const results = {
+            accounts: []
+        };
+
+        for (const cred of credentials) {
+            try {
+                const health = await this.testAccountHealth(cred.clientJwt);
+                results.accounts.push({
+                    account_id: cred.id,
+                    is_healthy: health.isHealthy
+                });
+            } catch {
+                results.accounts.push({
+                    account_id: cred.id,
+                    is_healthy: false
+                });
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * 刷新单个账号信息
+     * @param {string} clientJwt - Clerk client JWT token
+     * @returns {Promise<Object>} 刷新后的完整账号信息
+     */
+    static async refreshAccountInfo(clientJwt) {
+        return await this.getFullAccountInfo(clientJwt);
     }
 }
 

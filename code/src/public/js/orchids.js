@@ -1,12 +1,4 @@
-/**
- * Orchids Account Manager - Professional UI/UX
- * Enhanced JavaScript for account management
- */
-
-// ============================================
-// State Management
-// ============================================
-
+// State
 const OrchidsState = {
     credentials: [],
     selectedIds: new Set(),
@@ -15,13 +7,13 @@ const OrchidsState = {
     contextMenuTarget: null,
     detailTarget: null,
     importTab: 'json',
-    isLoading: false
+    isLoading: false,
+    healthStatus: {}, // 账号健康状态: { accountId: boolean }
+    registerTaskId: null,
+    registerEventSource: null
 };
 
-// ============================================
-// DOM Elements Cache
-// ============================================
-
+// DOM Elements
 const DOM = {
     // Containers
     cardsGrid: null,
@@ -33,330 +25,253 @@ const DOM = {
     addModal: null,
     batchImportModal: null,
     detailModal: null,
-
-    // Context Menu
-    contextMenu: null,
+    registerModal: null,
 
     // Stats
     statTotal: null,
     statValid: null,
     statExpiring: null,
     statError: null,
+    statHealthy: null,
+    statRequestCount: null,
+    statSuccessCount: null,
+    statFailureCount: null,
 
     // Form Elements
-    searchInput: null,
-    selectAll: null,
-    displayedCount: null,
-    selectedCount: null,
-    batchDeleteBtn: null
+    searchInput: null
 };
 
-// ============================================
 // Initialization
-// ============================================
-
 document.addEventListener('DOMContentLoaded', async () => {
+    // 生成并插入侧边栏
+    const sidebarContainer = document.getElementById('sidebar-container');
+    if (sidebarContainer && typeof getSidebarHTML === 'function') {
+        sidebarContainer.innerHTML = getSidebarHTML();
+    }
+    
+    // 初始化侧边栏导航
+    if (typeof initSidebar === 'function') {
+        initSidebar('orchids');
+    }
+    
     initDOMReferences();
-    initSidebarAndAuth();
     setupEventListeners();
     await loadCredentials();
+    
+    // 更新侧边栏统计
+    if (typeof updateSidebarStats === 'function') {
+        updateSidebarStats();
+    }
 });
 
 function initDOMReferences() {
-    // Containers
     DOM.cardsGrid = document.getElementById('cards-grid');
     DOM.listView = document.getElementById('list-view');
     DOM.emptyState = document.getElementById('empty-state');
     DOM.loadingState = document.getElementById('loading-state');
 
-    // Modals
     DOM.addModal = document.getElementById('add-modal');
     DOM.batchImportModal = document.getElementById('batch-import-modal');
     DOM.detailModal = document.getElementById('detail-modal');
+    DOM.registerModal = document.getElementById('register-modal');
 
-    // Context Menu
-    DOM.contextMenu = document.getElementById('context-menu');
-
-    // Stats
     DOM.statTotal = document.getElementById('stat-total');
     DOM.statValid = document.getElementById('stat-valid');
     DOM.statExpiring = document.getElementById('stat-expiring');
     DOM.statError = document.getElementById('stat-error');
+    DOM.statHealthy = document.getElementById('stat-healthy');
+    DOM.statRequestCount = document.getElementById('stat-request-count');
+    DOM.statSuccessCount = document.getElementById('stat-success-count');
+    DOM.statFailureCount = document.getElementById('stat-failure-count');
 
-    // Form Elements
     DOM.searchInput = document.getElementById('search-input');
-    DOM.selectAll = document.getElementById('select-all');
-    DOM.displayedCount = document.getElementById('displayed-count');
-    DOM.selectedCount = document.getElementById('selected-count');
-    DOM.batchDeleteBtn = document.getElementById('batch-delete-btn');
 }
 
-function initSidebarAndAuth() {
-    const sidebarContainer = document.getElementById('sidebar-container');
-    if (sidebarContainer && typeof getSidebarHTML === 'function') {
-        sidebarContainer.innerHTML = getSidebarHTML();
-        initSidebar('orchids');
+// 认证检查（使用 common.js 的 checkAuth）
+async function checkAuthAndRedirect() {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        window.location.href = '/login.html';
+        return false;
     }
+    return true;
 }
-
-// ============================================
-// Event Listeners
-// ============================================
 
 function setupEventListeners() {
     // Header Actions
     document.getElementById('add-account-btn')?.addEventListener('click', openAddModal);
     document.getElementById('batch-import-btn')?.addEventListener('click', openBatchImportModal);
     document.getElementById('empty-add-btn')?.addEventListener('click', openAddModal);
+    document.getElementById('refresh-all-btn')?.addEventListener('click', handleRefreshAll);
+    document.getElementById('export-btn')?.addEventListener('click', handleExport);
+    document.getElementById('auto-register-btn')?.addEventListener('click', openRegisterModal);
 
-    // Add Modal
-    document.getElementById('modal-close')?.addEventListener('click', closeAddModal);
-    document.getElementById('modal-cancel')?.addEventListener('click', closeAddModal);
-    document.getElementById('modal-submit')?.addEventListener('click', handleAddAccount);
-    document.getElementById('paste-jwt-btn')?.addEventListener('click', handlePasteJwt);
-    DOM.addModal?.addEventListener('click', (e) => {
-        if (e.target === DOM.addModal) closeAddModal();
+    // Search
+    DOM.searchInput?.addEventListener('input', (e) => {
+        OrchidsState.searchQuery = e.target.value.trim().toLowerCase();
+        renderCredentials();
     });
 
-    // Batch Import Modal
+    // View Toggle
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const view = btn.dataset.view;
+            OrchidsState.currentView = view;
+            
+            if (view === 'grid') {
+                DOM.cardsGrid.style.display = 'grid';
+                DOM.listView.style.display = 'none';
+            } else {
+                DOM.cardsGrid.style.display = 'none';
+                DOM.listView.style.display = 'block';
+            }
+        });
+    });
+
+    // Modals
+    document.getElementById('modal-close')?.addEventListener('click', closeAddModal);
+    document.getElementById('modal-cancel')?.addEventListener('click', closeAddModal);
+    document.getElementById('add-account-form')?.addEventListener('submit', handleAddAccount);
+
     document.getElementById('batch-modal-close')?.addEventListener('click', closeBatchImportModal);
-    document.getElementById('batch-modal-cancel')?.addEventListener('click', closeBatchImportModal);
-    document.getElementById('batch-modal-submit')?.addEventListener('click', handleBatchImport);
-    DOM.batchImportModal?.addEventListener('click', (e) => {
-        if (e.target === DOM.batchImportModal) closeBatchImportModal();
+    document.getElementById('batch-cancel')?.addEventListener('click', closeBatchImportModal);
+    document.getElementById('batch-import-form')?.addEventListener('submit', handleBatchImport);
+
+    document.getElementById('detail-modal-close')?.addEventListener('click', closeDetailModal);
+    document.getElementById('detail-delete-btn')?.addEventListener('click', handleDeleteAccount);
+    document.getElementById('detail-edit-weight-btn')?.addEventListener('click', handleEditWeight);
+    document.getElementById('detail-reset-stats-btn')?.addEventListener('click', handleResetStats);
+
+    // Register Modal
+    document.getElementById('register-modal-close')?.addEventListener('click', closeRegisterModal);
+    document.getElementById('register-modal-cancel')?.addEventListener('click', closeRegisterModal);
+    document.getElementById('register-start-btn')?.addEventListener('click', startRegister);
+    document.getElementById('register-cancel-btn')?.addEventListener('click', cancelRegister);
+
+    // Outside click
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-overlay')) {
+            if (e.target.id === 'add-modal') closeAddModal();
+            if (e.target.id === 'batch-import-modal') closeBatchImportModal();
+            if (e.target.id === 'detail-modal') closeDetailModal();
+            if (e.target.id === 'register-modal' && !OrchidsState.registerTaskId) closeRegisterModal();
+        }
+    });
+
+    // Paste JWT
+    document.getElementById('paste-jwt-btn')?.addEventListener('click', async () => {
+        try {
+            const text = await navigator.clipboard.readText();
+            document.getElementById('client-jwt').value = text;
+        } catch (err) {
+            showToast('无法读取剪贴板', 'error');
+        }
     });
 
     // Import Tabs
     document.querySelectorAll('.import-tab').forEach(tab => {
-        tab.addEventListener('click', () => switchImportTab(tab.dataset.tab));
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            OrchidsState.importTab = tab.dataset.tab;
+            
+            document.getElementById('json-panel').classList.toggle('active', tab.dataset.tab === 'json');
+            document.getElementById('text-panel').classList.toggle('active', tab.dataset.tab === 'text');
+        });
     });
-
-    // Detail Modal
-    document.getElementById('detail-modal-close')?.addEventListener('click', closeDetailModal);
-    document.getElementById('detail-modal-cancel')?.addEventListener('click', closeDetailModal);
-    document.getElementById('detail-test-btn')?.addEventListener('click', () => {
-        if (OrchidsState.detailTarget) testCredential(OrchidsState.detailTarget.id);
-    });
-    document.getElementById('detail-delete-btn')?.addEventListener('click', () => {
-        if (OrchidsState.detailTarget) {
-            closeDetailModal();
-            deleteCredential(OrchidsState.detailTarget.id);
-        }
-    });
-    DOM.detailModal?.addEventListener('click', (e) => {
-        if (e.target === DOM.detailModal) closeDetailModal();
-    });
-
-    // Search
-    DOM.searchInput?.addEventListener('input', (e) => {
-        OrchidsState.searchQuery = e.target.value.toLowerCase();
-        renderView();
-    });
-
-    // Keyboard Shortcuts
-    document.addEventListener('keydown', handleKeyboardShortcuts);
-
-    // Select All
-    DOM.selectAll?.addEventListener('change', handleSelectAll);
-
-    // Batch Actions
-    document.getElementById('batch-test-btn')?.addEventListener('click', handleBatchTest);
-    DOM.batchDeleteBtn?.addEventListener('click', handleBatchDelete);
-
-    // View Toggle
-    document.querySelectorAll('.view-btn').forEach(btn => {
-        btn.addEventListener('click', () => switchView(btn.dataset.view));
-    });
-
-    // Context Menu
-    document.addEventListener('click', hideContextMenu);
-    DOM.contextMenu?.addEventListener('click', handleContextMenuAction);
 }
 
-function handleKeyboardShortcuts(e) {
-    // Cmd/Ctrl + K for search
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        DOM.searchInput?.focus();
-    }
-
-    // Escape to close modals
-    if (e.key === 'Escape') {
-        closeAddModal();
-        closeBatchImportModal();
-        closeDetailModal();
-        hideContextMenu();
-    }
-}
-
-// ============================================
 // Data Loading
-// ============================================
-
 async function loadCredentials() {
-    showLoading(true);
-
+    setLoading(true);
     try {
-        if (typeof checkAuth === 'function' && !await checkAuth()) {
-            return;
-        }
-
         const response = await fetch('/api/orchids/credentials', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
         });
 
-        if (!response.ok) {
-            if (response.status === 401 && typeof logout === 'function') {
-                logout();
-                return;
-            }
-            throw new Error('加载失败');
-        }
+        if (!response.ok) throw new Error('加载失败');
 
         const data = await response.json();
-        OrchidsState.credentials = data.data || [];
-        renderView();
+        // 兼容不同的返回格式
+        OrchidsState.credentials = Array.isArray(data) ? data : (data.data || []);
+        
+        renderCredentials();
         updateStats();
     } catch (error) {
-        showToast('加载凭证失败: ' + error.message, 'error');
+        showToast(error.message, 'error');
     } finally {
-        showLoading(false);
+        setLoading(false);
     }
 }
 
-// ============================================
 // Rendering
-// ============================================
-
-function renderView() {
-    const filtered = getFilteredCredentials();
-    DOM.displayedCount.textContent = filtered.length;
+function renderCredentials() {
+    const query = OrchidsState.searchQuery;
+    const filtered = OrchidsState.credentials.filter(cred => {
+        if (!query) return true;
+        return (cred.name && cred.name.toLowerCase().includes(query)) || 
+               (cred.email && cred.email.toLowerCase().includes(query));
+    });
 
     if (filtered.length === 0) {
+        DOM.emptyState.style.display = 'block';
         DOM.cardsGrid.style.display = 'none';
         DOM.listView.style.display = 'none';
-        DOM.emptyState.style.display = 'flex';
         return;
     }
 
     DOM.emptyState.style.display = 'none';
+    
+    // Grid View
+    DOM.cardsGrid.innerHTML = filtered.map(createCardHTML).join('');
+    
+    // List View
+    DOM.listView.innerHTML = filtered.map(createListItemHTML).join('');
 
     if (OrchidsState.currentView === 'grid') {
         DOM.cardsGrid.style.display = 'grid';
         DOM.listView.style.display = 'none';
-        renderGridView(filtered);
     } else {
         DOM.cardsGrid.style.display = 'none';
         DOM.listView.style.display = 'block';
-        renderListView(filtered);
     }
-
-    updateBatchDeleteBtn();
-}
-
-function renderGridView(credentials) {
-    DOM.cardsGrid.innerHTML = credentials.map(cred => createCardHTML(cred)).join('');
-    bindCardEvents(credentials);
-}
-
-function renderListView(credentials) {
-    DOM.listView.innerHTML = `
-        <div class="orchids-list-header">
-            <div></div>
-            <div>账号</div>
-            <div>User ID</div>
-            <div>状态</div>
-            <div>过期时间</div>
-            <div>操作</div>
-        </div>
-        ${credentials.map(cred => createListItemHTML(cred)).join('')}
-    `;
-    bindCardEvents(credentials);
 }
 
 function createCardHTML(cred) {
-    const status = getCredentialStatus(cred);
-    const initial = getInitial(cred.name || cred.email);
+    const isHealthy = OrchidsState.healthStatus[cred.id] !== false;
+    const statusClass = !cred.isActive ? 'disabled' : (isHealthy ? 'healthy' : 'error');
+    const statusText = !cred.isActive ? '已禁用' : (isHealthy ? '正常' : '异常');
+    const statusDot = isHealthy ? '🟢' : '🔴';
 
     return `
-        <div class="orchids-card ${cred.isActive ? 'active' : ''} ${OrchidsState.selectedIds.has(cred.id) ? 'selected' : ''}"
-             data-id="${cred.id}">
+        <div class="orchids-card ${statusClass}" onclick="openDetailModal(${cred.id})">
             <div class="orchids-card-header">
-                <input type="checkbox" class="checkbox-custom orchids-card-checkbox"
-                       ${OrchidsState.selectedIds.has(cred.id) ? 'checked' : ''}>
-                <div class="orchids-card-avatar">
-                    ${initial}
-                    <span class="orchids-card-avatar-status ${status.class}"></span>
-                </div>
-                <div class="orchids-card-info">
-                    <div class="orchids-card-name">
-                        <span>${escapeHtml(cred.name)}</span>
-                    </div>
-                    ${cred.email ? `<div class="orchids-card-email">${escapeHtml(cred.email)}</div>` : ''}
-                </div>
-                <div class="orchids-card-badges">
-                    ${cred.isActive ? `
-                        <span class="orchids-badge active">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                            活跃
-                        </span>
-                    ` : ''}
-                    <span class="orchids-badge ${status.class}">${status.text}</span>
-                </div>
+                <div class="orchids-name" title="${escapeHtml(cred.name)}">${escapeHtml(cred.name)}</div>
+                <div class="orchids-status ${statusClass}">${statusText}</div>
             </div>
             <div class="orchids-card-body">
-                <div class="orchids-card-details">
-                    ${cred.userId ? `
                         <div class="orchids-detail-item">
-                            <span class="orchids-detail-label">User ID</span>
-                            <span class="orchids-detail-value mono">${escapeHtml(cred.userId.substring(0, 16))}...</span>
+                    <span class="orchids-detail-label">邮箱</span>
+                    <span class="orchids-detail-value" title="${escapeHtml(cred.email)}">${escapeHtml(cred.email || '-')}</span>
                         </div>
-                    ` : ''}
                     <div class="orchids-detail-item">
                         <span class="orchids-detail-label">过期时间</span>
-                        <span class="orchids-detail-value ${status.class}">${cred.expiresAt ? formatDate(new Date(cred.expiresAt)) : '-'}</span>
+                    <span class="orchids-detail-value">${formatDate(cred.expiresAt)}</span>
                     </div>
-                    ${cred.errorCount > 0 ? `
                         <div class="orchids-detail-item">
-                            <span class="orchids-detail-label">错误次数</span>
-                            <span class="orchids-detail-value error">${cred.errorCount}</span>
+                    <span class="orchids-detail-label">权重</span>
+                    <span class="orchids-detail-value">${cred.weight || 1}</span>
                         </div>
-                    ` : ''}
                     <div class="orchids-detail-item">
-                        <span class="orchids-detail-label">创建时间</span>
-                        <span class="orchids-detail-value">${formatDate(new Date(cred.createdAt))}</span>
+                    <span class="orchids-detail-label">请求数</span>
+                    <span class="orchids-detail-value">${cred.requestCount || 0}</span>
                     </div>
-                </div>
-            </div>
-            <div class="orchids-card-footer">
-                <div class="orchids-card-time">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    ${getTimeAgo(cred.createdAt)}
-                </div>
-                <div class="orchids-card-actions">
-                    <button class="orchids-action-btn primary" data-action="detail" title="查看详情">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"/>
-                            <line x1="12" y1="16" x2="12" y2="12"/>
-                            <line x1="12" y1="8" x2="12.01" y2="8"/>
-                        </svg>
-                    </button>
-                    <button class="orchids-action-btn" data-action="test" title="测试连接">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                        </svg>
-                    </button>
-                    <button class="orchids-action-btn danger" data-action="delete" title="删除">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
-                    </button>
+                <div class="orchids-detail-item">
+                    <span class="orchids-detail-label">成功/失败</span>
+                    <span class="orchids-detail-value success">${cred.successCount || 0}</span>
+                    <span class="orchids-detail-value error">/${cred.failureCount || 0}</span>
                 </div>
             </div>
         </div>
@@ -364,354 +279,59 @@ function createCardHTML(cred) {
 }
 
 function createListItemHTML(cred) {
-    const status = getCredentialStatus(cred);
-    const initial = getInitial(cred.name || cred.email);
-
-    return `
-        <div class="orchids-list-item ${OrchidsState.selectedIds.has(cred.id) ? 'selected' : ''}" data-id="${cred.id}">
-            <div>
-                <input type="checkbox" class="checkbox-custom orchids-card-checkbox"
-                       ${OrchidsState.selectedIds.has(cred.id) ? 'checked' : ''}>
-            </div>
-            <div class="orchids-list-name">
-                <div class="orchids-list-avatar">${initial}</div>
-                <div class="orchids-list-info">
-                    <div class="orchids-list-title">${escapeHtml(cred.name)}</div>
-                    ${cred.email ? `<div class="orchids-list-subtitle">${escapeHtml(cred.email)}</div>` : ''}
-                </div>
-            </div>
-            <div class="orchids-list-cell mono">${cred.userId ? cred.userId.substring(0, 12) + '...' : '-'}</div>
-            <div class="orchids-list-cell">
-                <span class="orchids-badge ${status.class}">${status.text}</span>
-            </div>
-            <div class="orchids-list-cell">${cred.expiresAt ? formatDate(new Date(cred.expiresAt)) : '-'}</div>
-            <div class="orchids-list-actions">
-                <button class="orchids-action-btn" data-action="test" title="测试">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                    </svg>
-                </button>
-                <button class="orchids-action-btn danger" data-action="delete" title="删除">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                </button>
-            </div>
-        </div>
-    `;
+    // Similar to card but row layout - simplified for now
+    return createCardHTML(cred); 
 }
 
-// ============================================
-// Event Binding
-// ============================================
-
-function bindCardEvents(credentials) {
-    credentials.forEach(cred => {
-        const card = document.querySelector(`[data-id="${cred.id}"]`);
-        if (!card) return;
-
-        // Checkbox
-        const checkbox = card.querySelector('.orchids-card-checkbox');
-        if (checkbox) {
-            checkbox.addEventListener('change', (e) => {
-                e.stopPropagation();
-                toggleSelection(cred.id, e.target.checked);
-            });
-        }
-
-        // Context Menu
-        card.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            showContextMenu(e, cred);
-        });
-
-        // Action Buttons
-        card.querySelectorAll('.orchids-action-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const action = btn.dataset.action;
-                handleCardAction(action, cred);
-            });
-        });
-
-        // Card Click for Detail
-        card.addEventListener('click', (e) => {
-            if (e.target.closest('.orchids-action-btn') || e.target.closest('.orchids-card-checkbox')) return;
-            openDetailModal(cred);
-        });
-    });
-}
-
-function handleCardAction(action, cred) {
-    switch (action) {
-        case 'detail':
-            openDetailModal(cred);
-            break;
-        case 'test':
-            testCredential(cred.id);
-            break;
-        case 'delete':
-            deleteCredential(cred.id);
-            break;
-        case 'activate':
-            activateCredential(cred.id);
-            break;
-        case 'copy':
-            copyToken(cred);
-            break;
-    }
-}
-
-// ============================================
-// Selection Management
-// ============================================
-
-function toggleSelection(id, selected) {
-    if (selected) {
-        OrchidsState.selectedIds.add(id);
-    } else {
-        OrchidsState.selectedIds.delete(id);
-    }
-    updateBatchDeleteBtn();
-    updateSelectAllCheckbox();
-}
-
-function handleSelectAll(e) {
-    const filtered = getFilteredCredentials();
-    if (e.target.checked) {
-        filtered.forEach(c => OrchidsState.selectedIds.add(c.id));
-    } else {
-        OrchidsState.selectedIds.clear();
-    }
-    renderView();
-}
-
-function updateSelectAllCheckbox() {
-    const filtered = getFilteredCredentials();
-    if (DOM.selectAll) {
-        DOM.selectAll.checked = filtered.length > 0 && filtered.every(c => OrchidsState.selectedIds.has(c.id));
-        DOM.selectAll.indeterminate = OrchidsState.selectedIds.size > 0 && !DOM.selectAll.checked;
-    }
-}
-
-function updateBatchDeleteBtn() {
-    if (DOM.batchDeleteBtn) {
-        DOM.batchDeleteBtn.style.display = OrchidsState.selectedIds.size > 0 ? 'inline-flex' : 'none';
-    }
-    if (DOM.selectedCount) {
-        DOM.selectedCount.textContent = OrchidsState.selectedIds.size;
-    }
-}
-
-// ============================================
-// View Switching
-// ============================================
-
-function switchView(view) {
-    OrchidsState.currentView = view;
-    document.querySelectorAll('.view-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.view === view);
-    });
-    renderView();
-}
-
-// ============================================
 // Modal Functions
-// ============================================
-
-function openAddModal() {
-    document.getElementById('account-name').value = '';
-    document.getElementById('account-email').value = '';
-    document.getElementById('client-jwt').value = '';
-    DOM.addModal?.classList.add('active');
-}
-
+function openAddModal() { DOM.addModal.classList.add('active'); }
 function closeAddModal() {
-    DOM.addModal?.classList.remove('active');
+    DOM.addModal.classList.remove('active'); 
+    document.getElementById('add-account-form').reset();
 }
 
-function openBatchImportModal() {
-    document.getElementById('batch-import-json').value = '';
-    document.getElementById('batch-import-text').value = '';
-    switchImportTab('json');
-    DOM.batchImportModal?.classList.add('active');
-}
+function openBatchImportModal() { DOM.batchImportModal.classList.add('active'); }
+function closeBatchImportModal() { DOM.batchImportModal.classList.remove('active'); }
 
-function closeBatchImportModal() {
-    DOM.batchImportModal?.classList.remove('active');
-}
+function openDetailModal(id) {
+    const cred = OrchidsState.credentials.find(c => c.id === id);
+    if (!cred) return;
 
-function switchImportTab(tab) {
-    OrchidsState.importTab = tab;
-    document.querySelectorAll('.import-tab').forEach(t => {
-        t.classList.toggle('active', t.dataset.tab === tab);
-    });
-    document.querySelectorAll('.import-panel').forEach(p => {
-        p.classList.toggle('active', p.id === `${tab}-panel`);
-    });
-}
-
-function openDetailModal(cred) {
     OrchidsState.detailTarget = cred;
-    const status = getCredentialStatus(cred);
+    
+    document.getElementById('detail-name').textContent = cred.name;
+    document.getElementById('detail-email').textContent = cred.email || '-';
+    document.getElementById('detail-weight').textContent = cred.weight || 1;
+    document.getElementById('detail-request-count').textContent = cred.requestCount || 0;
+    document.getElementById('detail-success-count').textContent = cred.successCount || 0;
+    document.getElementById('detail-failure-count').textContent = cred.failureCount || 0;
+    
+    const isHealthy = OrchidsState.healthStatus[cred.id] !== false;
+    const statusText = !cred.isActive ? '已禁用' : (isHealthy ? '正常' : '异常');
+    const statusClass = !cred.isActive ? 'disabled' : (isHealthy ? 'success' : 'error');
+    
+    const statusEl = document.getElementById('detail-status');
+    statusEl.textContent = statusText;
+    statusEl.className = `detail-value ${statusClass}`;
 
-    document.getElementById('detail-modal-title').textContent = cred.name;
-    document.getElementById('detail-modal-subtitle').textContent = cred.email || '无邮箱';
-
-    const body = document.getElementById('detail-modal-body');
-    body.innerHTML = `
-        <div class="detail-sections">
-            <div class="detail-section">
-                <div class="detail-section-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="16" x2="12" y2="12"/>
-                        <line x1="12" y1="8" x2="12.01" y2="8"/>
-                    </svg>
-                    基本信息
-                </div>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <span class="detail-label">账号名称</span>
-                        <span class="detail-value">${escapeHtml(cred.name)}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">邮箱地址</span>
-                        <span class="detail-value">${cred.email ? escapeHtml(cred.email) : '-'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">状态</span>
-                        <span class="status-indicator ${status.class}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                ${status.class === 'valid' ? '<polyline points="20 6 9 17 4 12"/>' :
-                                  status.class === 'expiring' ? '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>' :
-                                  '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'}
-                            </svg>
-                            ${status.text}
-                        </span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">活跃状态</span>
-                        <span class="detail-value ${cred.isActive ? 'success' : ''}">${cred.isActive ? '当前活跃' : '未激活'}</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="detail-section">
-                <div class="detail-section-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                    凭证信息
-                </div>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <span class="detail-label">User ID</span>
-                        <span class="detail-value mono">${cred.userId || '-'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Session ID</span>
-                        <span class="detail-value mono">${cred.clerkSessionId || '-'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">过期时间</span>
-                        <span class="detail-value ${status.class}">${cred.expiresAt ? formatDate(new Date(cred.expiresAt)) : '-'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">错误次数</span>
-                        <span class="detail-value ${cred.errorCount > 0 ? 'error' : ''}">${cred.errorCount || 0}</span>
-                    </div>
-                    ${cred.lastError ? `
-                        <div class="detail-item full-width">
-                            <span class="detail-label">最后错误</span>
-                            <span class="detail-value error">${escapeHtml(cred.lastError)}</span>
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-
-            <div class="detail-section">
-                <div class="detail-section-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    时间信息
-                </div>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <span class="detail-label">创建时间</span>
-                        <span class="detail-value">${formatDate(new Date(cred.createdAt))}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">更新时间</span>
-                        <span class="detail-value">${cred.updatedAt ? formatDate(new Date(cred.updatedAt)) : '-'}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    DOM.detailModal?.classList.add('active');
+    DOM.detailModal.classList.add('active');
 }
 
 function closeDetailModal() {
-    DOM.detailModal?.classList.remove('active');
+    DOM.detailModal.classList.remove('active');
     OrchidsState.detailTarget = null;
 }
 
-// ============================================
-// Context Menu
-// ============================================
-
-function showContextMenu(e, cred) {
-    OrchidsState.contextMenuTarget = cred;
-    DOM.contextMenu.style.display = 'block';
-    DOM.contextMenu.style.left = `${e.pageX}px`;
-    DOM.contextMenu.style.top = `${e.pageY}px`;
-
-    // Adjust position if menu goes off screen
-    const rect = DOM.contextMenu.getBoundingClientRect();
-    if (rect.right > window.innerWidth) {
-        DOM.contextMenu.style.left = `${e.pageX - rect.width}px`;
-    }
-    if (rect.bottom > window.innerHeight) {
-        DOM.contextMenu.style.top = `${e.pageY - rect.height}px`;
-    }
-}
-
-function hideContextMenu() {
-    if (DOM.contextMenu) {
-        DOM.contextMenu.style.display = 'none';
-    }
-    OrchidsState.contextMenuTarget = null;
-}
-
-function handleContextMenuAction(e) {
-    const item = e.target.closest('.context-menu-item');
-    if (!item || !OrchidsState.contextMenuTarget) return;
-
-    const action = item.dataset.action;
-    handleCardAction(action, OrchidsState.contextMenuTarget);
-    hideContextMenu();
-}
-
-// ============================================
-// API Operations
-// ============================================
-
-async function handleAddAccount() {
+// API Actions
+async function handleAddAccount(e) {
+    e.preventDefault();
+    const jwt = document.getElementById('client-jwt').value.trim();
     const name = document.getElementById('account-name').value.trim();
-    const email = document.getElementById('account-email').value.trim();
-    const clientJwt = document.getElementById('client-jwt').value.trim();
+    const weight = parseInt(document.getElementById('account-weight').value) || 1;
 
-    if (!name || !clientJwt) {
-        showToast('请填写账号名称和 Client JWT', 'error');
-        return;
-    }
+    if (!jwt) return showToast('请输入 Client Cookie', 'error');
 
+    setLoading(true);
     try {
         const response = await fetch('/api/orchids/credentials', {
             method: 'POST',
@@ -719,66 +339,114 @@ async function handleAddAccount() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${localStorage.getItem('authToken')}`
             },
-            body: JSON.stringify({ name, email, clientJwt })
+            body: JSON.stringify({ client_cookie: jwt, name, weight })
         });
 
         const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || '添加失败');
-        }
+        if (!response.ok) throw new Error(data.error || '添加失败');
 
         showToast('账号添加成功', 'success');
         closeAddModal();
         await loadCredentials();
     } catch (error) {
-        showToast('添加失败: ' + error.message, 'error');
+        showToast(error.message, 'error');
+    } finally {
+        setLoading(false);
     }
 }
 
-async function handlePasteJwt() {
+async function handleDeleteAccount() {
+    if (!OrchidsState.detailTarget) return;
+    if (!confirm(`确定要删除账号 "${OrchidsState.detailTarget.name}" 吗？`)) return;
+
     try {
-        const text = await navigator.clipboard.readText();
-        document.getElementById('client-jwt').value = text;
-        showToast('已粘贴', 'success');
+        await fetch(`/api/orchids/credentials/${OrchidsState.detailTarget.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
+        });
+        showToast('删除成功', 'success');
+        closeDetailModal();
+        await loadCredentials();
     } catch (error) {
-        showToast('无法访问剪贴板', 'error');
+        showToast(error.message, 'error');
     }
 }
 
-async function handleBatchImport() {
-    let accounts;
+async function handleEditWeight() {
+    if (!OrchidsState.detailTarget) return;
+    const newWeight = prompt(`请输入新权重 (当前: ${OrchidsState.detailTarget.weight}):`, OrchidsState.detailTarget.weight);
+    if (newWeight === null) return;
+    
+    const weight = parseInt(newWeight);
+    if (isNaN(weight) || weight < 1) return showToast('无效权重', 'error');
 
     try {
-        if (OrchidsState.importTab === 'json') {
-            const jsonText = document.getElementById('batch-import-json').value.trim();
-            if (!jsonText) {
-                showToast('请输入 JSON 数据', 'error');
-                return;
-            }
-            accounts = JSON.parse(jsonText);
+        await fetch(`/api/orchids/credentials/${OrchidsState.detailTarget.id}/weight`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            },
+            body: JSON.stringify({ weight })
+        });
+        showToast('权重更新成功', 'success');
+        closeDetailModal();
+        await loadCredentials();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function handleResetStats() {
+    if (!OrchidsState.detailTarget) return;
+    if (!confirm('确定重置统计数据？')) return;
+
+    try {
+        await fetch(`/api/orchids/credentials/${OrchidsState.detailTarget.id}/reset-stats`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
+        });
+        showToast('统计已重置', 'success');
+        closeDetailModal();
+        await loadCredentials();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function handleBatchImport(e) {
+    e.preventDefault();
+    const type = OrchidsState.importTab;
+    const content = type === 'json' 
+        ? document.getElementById('batch-import-json').value 
+        : document.getElementById('batch-import-text').value;
+
+    if (!content.trim()) return showToast('请输入要导入的数据', 'error');
+
+    let accounts = [];
+    try {
+        if (type === 'json') {
+            accounts = JSON.parse(content);
+            if (!Array.isArray(accounts)) throw new Error('JSON必须是数组格式');
         } else {
-            const textData = document.getElementById('batch-import-text').value.trim();
-            if (!textData) {
-                showToast('请输入账号数据', 'error');
-                return;
+            accounts = content.split('\n')
+                .filter(line => line.trim())
+        .map(line => {
+                    const parts = line.trim().split(/\s+/);
+            if (parts.length >= 2) {
+                return { email: parts[0], clientJwt: parts[1] };
             }
-            accounts = parseTextImport(textData);
+            return null;
+        })
+        .filter(Boolean);
         }
+    } catch (err) {
+        return showToast('数据格式错误: ' + err.message, 'error');
+}
 
-        if (!Array.isArray(accounts) || accounts.length === 0) {
-            showToast('数据格式错误或为空', 'error');
-            return;
-        }
-    } catch (error) {
-        showToast('数据解析失败: ' + error.message, 'error');
-        return;
-    }
-
+    setLoading(true);
     try {
-        showToast('正在导入...', 'info');
-
-        const response = await fetch('/api/orchids/credentials/batch-import', {
+        const response = await fetch('/api/orchids/credentials/batch', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -787,294 +455,175 @@ async function handleBatchImport() {
             body: JSON.stringify({ accounts })
         });
 
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || '导入失败');
-        }
-
-        const result = data.data;
-        showToast(`导入完成: 成功 ${result.success} 个，失败 ${result.failed} 个`,
-                  result.failed > 0 ? 'warning' : 'success');
-
-        closeBatchImportModal();
-        await loadCredentials();
-    } catch (error) {
-        showToast('导入失败: ' + error.message, 'error');
-    }
-}
-
-function parseTextImport(text) {
-    return text.split('\n')
-        .map(line => line.trim())
-        .filter(line => line)
-        .map(line => {
-            const parts = line.split(/\s+/);
-            if (parts.length >= 2) {
-                return { email: parts[0], clientJwt: parts[1] };
-            } else if (parts.length === 1) {
-                return { clientJwt: parts[0] };
-            }
-            return null;
-        })
-        .filter(Boolean);
-}
-
-async function testCredential(id) {
-    const card = document.querySelector(`[data-id="${id}"]`);
-    card?.classList.add('testing');
-
-    try {
-        showToast('正在测试...', 'info');
-
-        const response = await fetch(`/api/orchids/credentials/${id}/test`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-            }
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || '测试失败');
-        }
-
-        if (data.valid) {
-            showToast('Token 有效', 'success');
+        const result = await response.json();
+        if (result.success) {
+            showToast(`成功导入 ${result.count} 个账号`, 'success');
+            closeBatchImportModal();
+            await loadCredentials();
         } else {
-            showToast('Token 无效: ' + (data.error || '未知错误'), 'error');
+            showToast(result.error || '导入失败', 'error');
         }
-
-        await loadCredentials();
     } catch (error) {
-        showToast('测试失败: ' + error.message, 'error');
+        showToast(error.message, 'error');
     } finally {
-        card?.classList.remove('testing');
+        setLoading(false);
     }
 }
 
-async function deleteCredential(id) {
-    if (!confirm('确定要删除此账号吗？此操作不可恢复。')) return;
+function handleRefreshAll() {
+    if(!confirm('确定刷新所有账号？')) return;
+    fetch('/api/orchids/refresh-all', {
+        method: 'POST',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
+    }).then(() => {
+        showToast('刷新任务已启动', 'success');
+        setTimeout(loadCredentials, 2000);
+    }).catch(e => showToast(e.message, 'error'));
+}
 
+function handleExport() {
+    window.location.href = `/api/orchids/export?token=${localStorage.getItem('authToken')}`;
+}
+
+// Stats
+async function updateStats() {
+    const list = OrchidsState.credentials;
+    const total = list.length;
+    const valid = list.filter(c => c.isActive).length;
+    const now = new Date();
+    const expiring = list.filter(c => c.expiresAt && (new Date(c.expiresAt) - now) < (1000 * 60 * 60 * 24 * 3)).length;
+    
+    // Fetch real health status
+    let healthData = { accounts: [] };
     try {
-        const response = await fetch(`/api/orchids/credentials/${id}`, {
-            method: 'DELETE',
+        const res = await fetch('/api/orchids/credentials/health', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
         });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || '删除失败');
-        }
-
-        showToast('删除成功', 'success');
-        OrchidsState.selectedIds.delete(id);
-        await loadCredentials();
-    } catch (error) {
-        showToast('删除失败: ' + error.message, 'error');
-    }
-}
-
-async function activateCredential(id) {
-    try {
-        const response = await fetch(`/api/orchids/credentials/${id}/activate`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || '激活失败');
-        }
-
-        showToast('已设为活跃账号', 'success');
-        await loadCredentials();
-    } catch (error) {
-        showToast('激活失败: ' + error.message, 'error');
-    }
-}
-
-async function copyToken(cred) {
-    try {
-        await navigator.clipboard.writeText(cred.clientJwt);
-        showToast('Token 已复制到剪贴板', 'success');
-    } catch (error) {
-        showToast('复制失败', 'error');
-    }
-}
-
-async function handleBatchTest() {
-    const ids = OrchidsState.selectedIds.size > 0
-        ? Array.from(OrchidsState.selectedIds)
-        : OrchidsState.credentials.map(c => c.id);
-
-    if (ids.length === 0) {
-        showToast('没有可测试的账号', 'warning');
-        return;
-    }
-
-    showToast(`正在测试 ${ids.length} 个账号...`, 'info');
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const id of ids) {
-        try {
-            const response = await fetch(`/api/orchids/credentials/${id}/test`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-                }
-            });
-
-            const data = await response.json();
-            if (data.valid) {
-                successCount++;
-            } else {
-                failCount++;
-            }
-        } catch {
-            failCount++;
-        }
-    }
-
-    showToast(`测试完成: ${successCount} 个有效，${failCount} 个无效`, failCount > 0 ? 'warning' : 'success');
-    await loadCredentials();
-}
-
-async function handleBatchDelete() {
-    if (OrchidsState.selectedIds.size === 0) return;
-
-    if (!confirm(`确定要删除选中的 ${OrchidsState.selectedIds.size} 个账号吗？此操作不可恢复。`)) return;
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const id of OrchidsState.selectedIds) {
-        try {
-            const response = await fetch(`/api/orchids/credentials/${id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-            });
-
-            if (response.ok) {
-                successCount++;
-            } else {
-                failCount++;
-            }
-        } catch {
-            failCount++;
-        }
-    }
-
-    OrchidsState.selectedIds.clear();
-    showToast(`删除完成: 成功 ${successCount} 个，失败 ${failCount} 个`,
-              failCount > 0 ? 'warning' : 'success');
-    await loadCredentials();
-}
-
-// ============================================
-// Utility Functions
-// ============================================
-
-function getFilteredCredentials() {
-    return OrchidsState.credentials.filter(c => {
-        if (!OrchidsState.searchQuery) return true;
-        const query = OrchidsState.searchQuery.toLowerCase();
-        return (c.name && c.name.toLowerCase().includes(query)) ||
-               (c.email && c.email.toLowerCase().includes(query)) ||
-               (c.userId && c.userId.toLowerCase().includes(query));
-    });
-}
-
-function getCredentialStatus(cred) {
-    const now = new Date();
-    const expiresAt = cred.expiresAt ? new Date(cred.expiresAt) : null;
-
-    if (cred.errorCount > 0) {
-        return { class: 'error', text: '错误' };
-    }
-    if (expiresAt && expiresAt < now) {
-        return { class: 'expired', text: '已过期' };
-    }
-    if (expiresAt && (expiresAt - now) < 10 * 60 * 1000) {
-        return { class: 'expiring', text: '即将过期' };
-    }
-    return { class: 'valid', text: '正常' };
-}
-
-function updateStats() {
-    const now = new Date();
-    const total = OrchidsState.credentials.length;
-    const valid = OrchidsState.credentials.filter(c => {
-        const expiresAt = c.expiresAt ? new Date(c.expiresAt) : null;
-        return c.errorCount === 0 && (!expiresAt || expiresAt > now);
-    }).length;
-    const expiring = OrchidsState.credentials.filter(c => {
-        const expiresAt = c.expiresAt ? new Date(c.expiresAt) : null;
-        return expiresAt && expiresAt > now && (expiresAt - now) < 10 * 60 * 1000;
-    }).length;
-    const error = OrchidsState.credentials.filter(c => c.errorCount > 0).length;
-
+        if (res.ok) healthData = await res.json();
+    } catch (e) { console.error(e); }
+    
+    OrchidsState.healthStatus = {};
+    healthData.accounts.forEach(h => OrchidsState.healthStatus[h.account_id] = h.is_healthy);
+    
+    const healthy = list.filter(c => OrchidsState.healthStatus[c.id] === true).length;
+    const error = list.filter(c => OrchidsState.healthStatus[c.id] === false || c.errorCount > 0).length;
+    
+    const req = list.reduce((s, c) => s + (c.requestCount || 0), 0);
+    const succ = list.reduce((s, c) => s + (c.successCount || 0), 0);
+    const fail = list.reduce((s, c) => s + (c.failureCount || 0), 0);
+    
     if (DOM.statTotal) DOM.statTotal.textContent = total;
     if (DOM.statValid) DOM.statValid.textContent = valid;
     if (DOM.statExpiring) DOM.statExpiring.textContent = expiring;
     if (DOM.statError) DOM.statError.textContent = error;
+    if (DOM.statHealthy) DOM.statHealthy.textContent = healthy;
+    if (DOM.statRequestCount) DOM.statRequestCount.textContent = req;
+    if (DOM.statSuccessCount) DOM.statSuccessCount.textContent = succ;
+    if (DOM.statFailureCount) DOM.statFailureCount.textContent = fail;
 }
 
-function showLoading(show) {
-    OrchidsState.isLoading = show;
-    if (DOM.loadingState) {
-        DOM.loadingState.style.display = show ? 'flex' : 'none';
-    }
-    if (DOM.cardsGrid && show) {
-        DOM.cardsGrid.style.display = 'none';
-    }
-    if (DOM.listView && show) {
-        DOM.listView.style.display = 'none';
-    }
+// Utils
+function setLoading(show) {
+    if (DOM.loadingState) DOM.loadingState.style.display = show ? 'flex' : 'none';
 }
 
-function getInitial(str) {
-    if (!str) return '?';
-    return str.charAt(0).toUpperCase();
-}
-
-function getTimeAgo(dateStr) {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now - date;
-
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes} 分钟前`;
-    if (hours < 24) return `${hours} 小时前`;
-    if (days < 30) return `${days} 天前`;
-    return formatDate(date);
-}
-
-function formatDate(date) {
-    if (!date || isNaN(date.getTime())) return '-';
-    return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
+function escapeHtml(str) {
+    if (!str) return '';
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = str;
     return div.innerHTML;
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString();
+}
+
+// Auto Register (Retained)
+function openRegisterModal() {
+    document.getElementById('register-count').value = '1';
+    document.getElementById('register-config').style.display = 'block';
+    document.getElementById('register-progress').style.display = 'none';
+    document.getElementById('register-start-btn').style.display = 'inline-flex';
+    document.getElementById('register-cancel-btn').style.display = 'none';
+    document.getElementById('register-logs').innerHTML = '';
+    DOM.registerModal?.classList.add('active');
+}
+
+function closeRegisterModal() {
+    if (OrchidsState.registerTaskId && !confirm('确定关闭？')) return;
+    if (OrchidsState.registerEventSource) {
+        OrchidsState.registerEventSource.close();
+        OrchidsState.registerEventSource = null;
+    }
+    DOM.registerModal?.classList.remove('active');
+    OrchidsState.registerTaskId = null;
+}
+
+async function startRegister() {
+    const count = parseInt(document.getElementById('register-count').value) || 1;
+    try {
+        const res = await fetch('/api/orchids/register/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            },
+            body: JSON.stringify({ count })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        OrchidsState.registerTaskId = data.taskId;
+        document.getElementById('register-config').style.display = 'none';
+        document.getElementById('register-progress').style.display = 'block';
+        document.getElementById('register-start-btn').style.display = 'none';
+        document.getElementById('register-cancel-btn').style.display = 'inline-flex';
+        
+        startRegisterStream(data.taskId);
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+function startRegisterStream(taskId) {
+    const logsContainer = document.getElementById('register-logs');
+    OrchidsState.registerEventSource = new EventSource(`/api/orchids/register/stream/${taskId}`);
+    
+    OrchidsState.registerEventSource.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            document.getElementById('progress-current').textContent = data.progress;
+            document.getElementById('progress-success').textContent = data.success;
+            document.getElementById('progress-failed').textContent = data.failed;
+            
+            const percent = data.count > 0 ? Math.round((data.progress / data.count) * 100) : 0;
+            document.getElementById('progress-bar').style.width = `${percent}%`;
+            document.getElementById('progress-status').textContent = data.status;
+            
+            if (data.newLogs) {
+                data.newLogs.forEach(log => {
+                    const div = document.createElement('div');
+                    div.className = `register-log ${log.level.toLowerCase()}`;
+                    div.innerHTML = `<span class="log-time">${new Date(log.timestamp).toLocaleTimeString()}</span> ${log.message}`;
+                    logsContainer.appendChild(div);
+                });
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            }
+            
+            if (['completed', 'error', 'cancelled'].includes(data.status)) {
+                OrchidsState.registerEventSource.close();
+                document.getElementById('register-cancel-btn').style.display = 'none';
+                if (data.status === 'completed') loadCredentials();
+            }
+        } catch (e) { console.error(e); }
+    };
+}
+
+async function cancelRegister() {
+    if (!OrchidsState.registerTaskId) return;
+    try {
+        await fetch(`/api/orchids/register/cancel/${OrchidsState.registerTaskId}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
+        });
+    } catch (e) { showToast(e.message, 'error'); }
 }

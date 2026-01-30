@@ -267,8 +267,8 @@ export async function setupVertexRoutes(app) {
     // 获取支持的模型列表
     app.get('/api/vertex/models', (req, res) => {
         res.json({
-            models: Object.keys(VERTEX_MODEL_MAPPING),
-            mapping: VERTEX_MODEL_MAPPING
+            models: Object.keys(VERTEX_GEMINI_MODEL_MAPPING),
+            mapping: VERTEX_GEMINI_MODEL_MAPPING
         });
     });
 

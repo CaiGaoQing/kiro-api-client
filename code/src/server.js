@@ -11,6 +11,7 @@ import { KiroAuth } from './kiro/auth.js';
 import { OrchidsAPI } from './orchids/orchids-service.js';
 import { OrchidsChatService, ORCHIDS_MODELS } from './orchids/orchids-chat-service.js';
 import { setupOrchidsRoutes } from './orchids/orchids-routes.js';
+import { OrchidsLoadBalancer, getOrchidsLoadBalancer, closeOrchidsLoadBalancer } from './orchids/orchids-loadbalancer.js';
 import { WarpService, WARP_MODELS, refreshAccessToken, isTokenExpired, getEmailFromToken, parseJwtToken } from './warp/warp-service.js';
 import { setupWarpRoutes } from './warp/warp-routes.js';
 import { setupWarpMultiAgentRoutes } from './warp/warp-multi-agent.js';
@@ -85,6 +86,7 @@ let apiKeyStore = null;
 let apiLogStore = null;
 let geminiStore = null;
 let orchidsStore = null;
+let orchidsLoadBalancer = null;
 let warpStore = null;
 let warpService = null;
 let trialStore = null;
@@ -2093,12 +2095,17 @@ app.post('/v1/orchids/messages', handleOrchidsRequest);  // 兼容路径
 
 /**
  * Orchids API 请求处理函数
+ * 支持负载均衡和故障转移（参考 orchids-api-main 的 handler.go）
  */
 async function handleOrchidsRequest(req, res) {
     const startTime = Date.now();
     const requestId = 'orchids_' + Date.now() + Math.random().toString(36).substring(2, 8);
     const clientIp = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
+
+    // 重试配置
+    const MAX_RETRY_COUNT = 3;
+    const BASE_RETRY_DELAY = 100; // ms
 
     let logData = {
         requestId,
@@ -2113,6 +2120,9 @@ async function handleOrchidsRequest(req, res) {
     };
 
     let keyRecord = null;
+    let retryCount = 0;
+    let failedAccountIds = [];
+    let currentCredential = null;
 
     try {
         // API Key 认证
@@ -2152,9 +2162,25 @@ async function handleOrchidsRequest(req, res) {
 
         const { model, messages, max_tokens, stream, system } = req.body;
 
-        // 获取 Orchids 凭证
-        const orchidsCredentials = await orchidsStore.getAll();
-        if (orchidsCredentials.length === 0) {
+        // 使用负载均衡器选择账号
+        const selectAccount = async () => {
+            if (orchidsLoadBalancer) {
+                const credential = await orchidsLoadBalancer.getNextAccountExcluding(failedAccountIds);
+                if (credential) {
+                    console.log(`[${getTimestamp()}] [Orchids] 使用账号: ${credential.name} (${credential.email || 'N/A'})`);
+                    return credential;
+                }
+            }
+            // 回退到传统方式
+            const orchidsCredentials = await orchidsStore.getAll();
+            if (orchidsCredentials.length === 0) return null;
+            return orchidsCredentials.find(c => c.isActive && !failedAccountIds.includes(c.id)) 
+                || orchidsCredentials.find(c => !failedAccountIds.includes(c.id))
+                || orchidsCredentials[0];
+        };
+
+        currentCredential = await selectAccount();
+        if (!currentCredential) {
             decrementConcurrent(keyRecord.id, clientIp);
             logData.statusCode = 503;
             logData.errorMessage = 'No available Orchids credentials';
@@ -2162,10 +2188,8 @@ async function handleOrchidsRequest(req, res) {
             return res.status(503).json({ error: { type: 'service_error', message: 'No available Orchids credentials' } });
         }
 
-        // 选择活跃凭证或第一个凭证
-        const credential = orchidsCredentials.find(c => c.isActive) || orchidsCredentials[0];
-        logData.credentialId = credential.id;
-        logData.credentialName = credential.name;
+        logData.credentialId = currentCredential.id;
+        logData.credentialName = currentCredential.name;
         logData.model = model || 'claude-sonnet-4-5';
         logData.stream = !!stream;
 
@@ -2173,19 +2197,19 @@ async function handleOrchidsRequest(req, res) {
         const inputTokens = Math.ceil(JSON.stringify(messages).length / 4);
         logData.inputTokens = inputTokens;
 
-        // console.log(`[${getTimestamp()}] [Orchids API] 请求 ${requestId} | IP: ${clientIp} | Key: ${keyRecord.keyPrefix} | Model: ${model} | Stream: ${!!stream}`);
-
-        const orchidsService = new OrchidsChatService(credential);
         const requestBody = { messages, system, max_tokens };
 
-        if (stream) {
-            res.setHeader('Content-Type', 'text/event-stream');
-            res.setHeader('Cache-Control', 'no-cache');
-            res.setHeader('Connection', 'keep-alive');
-            res.setHeader('X-Accel-Buffering', 'no');
+        // 执行请求（带重试逻辑）
+        const executeRequest = async (credential) => {
+            const orchidsService = new OrchidsChatService(credential);
+            
+            if (stream) {
+                res.setHeader('Content-Type', 'text/event-stream');
+                res.setHeader('Cache-Control', 'no-cache');
+                res.setHeader('Connection', 'keep-alive');
+                res.setHeader('X-Accel-Buffering', 'no');
 
-            let outputTokens = 0;
-            try {
+                let outputTokens = 0;
                 for await (const event of orchidsService.generateContentStream(model, requestBody)) {
                     res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
                     if (event.usage?.output_tokens) {
@@ -2194,32 +2218,90 @@ async function handleOrchidsRequest(req, res) {
                 }
                 logData.outputTokens = outputTokens;
                 logData.statusCode = 200;
-            } catch (streamError) {
-                // console.error(`[${getTimestamp()}] [Orchids API] 流式错误: ${streamError.message}`);
-                const errorEvent = {
-                    type: 'error',
-                    error: { type: 'api_error', message: streamError.message }
-                };
-                res.write(`event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`);
-                logData.statusCode = 500;
-                logData.errorMessage = streamError.message;
+                res.end();
+                return { success: true };
+            } else {
+                const response = await orchidsService.generateContent(model, requestBody);
+                logData.outputTokens = response.usage?.output_tokens || 0;
+                logData.statusCode = 200;
+                res.json(response);
+                return { success: true };
             }
-            res.end();
-        } else {
-            const response = await orchidsService.generateContent(model, requestBody);
-            logData.outputTokens = response.usage?.output_tokens || 0;
-            logData.statusCode = 200;
-            res.json(response);
+        };
+
+        // 主请求循环（带故障转移）
+        let lastError = null;
+        while (retryCount <= MAX_RETRY_COUNT) {
+            try {
+                const result = await executeRequest(currentCredential);
+                if (result.success) {
+                    // 请求成功，记录成功计数
+                    if (orchidsLoadBalancer) {
+                        orchidsLoadBalancer.scheduleSuccessCount(currentCredential.id);
+                        await orchidsLoadBalancer.markAccountActive(currentCredential.id);
+                    }
+                    break;
+                }
+            } catch (error) {
+                lastError = error;
+                console.error(`[${getTimestamp()}] [Orchids] 账号 ${currentCredential.name} 请求失败: ${error.message}`);
+
+                // 记录失败
+                if (orchidsLoadBalancer) {
+                    orchidsLoadBalancer.scheduleFailureCount(currentCredential.id);
+                }
+                failedAccountIds.push(currentCredential.id);
+                retryCount++;
+
+                // 检查是否超过最大重试次数
+                if (retryCount >= MAX_RETRY_COUNT) {
+                    console.log(`[${getTimestamp()}] [Orchids] 已达到最大重试次数 (${MAX_RETRY_COUNT})，停止重试`);
+                    break;
+                }
+
+                console.log(`[${getTimestamp()}] [Orchids] 尝试切换账号 (重试 ${retryCount}/${MAX_RETRY_COUNT}, 已排除 ${failedAccountIds.length} 个)`);
+
+                // 指数退避
+                const backoff = Math.pow(2, retryCount - 1) * BASE_RETRY_DELAY;
+                await new Promise(resolve => setTimeout(resolve, backoff));
+
+                // 选择新账号
+                const newCredential = await selectAccount();
+                if (!newCredential || failedAccountIds.includes(newCredential.id)) {
+                    console.log(`[${getTimestamp()}] [Orchids] 无更多可用账号`);
+                    break;
+                }
+                currentCredential = newCredential;
+                logData.credentialId = currentCredential.id;
+                logData.credentialName = currentCredential.name;
+                console.log(`[${getTimestamp()}] [Orchids] 切换到账号: ${currentCredential.name}`);
+            }
         }
 
-        const durationMs = Date.now() - startTime;
-        // console.log(`[${getTimestamp()}] [Orchids] ${requestId} | ${keyRecord.keyPrefix} | ${clientIp} | ${durationMs}ms | in:${inputTokens} out:${logData.outputTokens}`);
+        // 如果所有重试都失败
+        if (lastError && !res.headersSent) {
+            const errorEvent = {
+                type: 'error',
+                error: { type: 'api_error', message: lastError.message }
+            };
+            if (stream) {
+                res.write(`event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`);
+                res.end();
+            } else {
+                res.status(500).json({ error: { type: 'api_error', message: lastError.message } });
+            }
+            logData.statusCode = 500;
+            logData.errorMessage = lastError.message;
+        }
+
+        console.log(`[${getTimestamp()}] [Orchids] ${requestId} | 完成 | 重试=${retryCount} | 耗时=${Date.now() - startTime}ms`);
 
     } catch (error) {
-        // console.error(`[${getTimestamp()}] [Orchids API] 错误: ${error.message}`);
         logData.statusCode = 500;
         logData.errorMessage = error.message;
-        res.status(500).json({ error: { type: 'api_error', message: error.message } });
+        if (!res.headersSent) {
+            res.status(500).json({ error: { type: 'api_error', message: error.message } });
+        }
     } finally {
         if (keyRecord) {
             decrementConcurrent(keyRecord.id, clientIp);
@@ -3626,8 +3708,7 @@ app.get('/api/error-credentials/:id/usage', async (req, res) => {
 });
 
 // ============ Gemini Antigravity 凭证管理 ============
-// 路由已抽离到 gemini/gemini-routes.js
-setupGeminiRoutes(app, geminiStore, getTimestamp);
+// 路由已抽离到 gemini/gemini-routes.js，在 start() 中初始化
 
 // ============ 模型定价管理 ============
 
@@ -4445,6 +4526,7 @@ async function start() {
     apiLogStore = await ApiLogStore.create();
     geminiStore = await GeminiCredentialStore.create();
     orchidsStore = await OrchidsCredentialStore.create();
+    orchidsLoadBalancer = await getOrchidsLoadBalancer(orchidsStore);
     warpStore = await WarpCredentialStore.create();
     warpService = new WarpService(warpStore);
     trialStore = await TrialApplicationStore.create();
@@ -4507,6 +4589,9 @@ async function start() {
     setupWarpProxyRoutes(app, warpStore);
     // console.log(`[${getTimestamp()}] Warp 代理服务已启动`);
 
+    // 设置 Gemini 路由
+    setupGeminiRoutes(app, geminiStore, getTimestamp);
+    
     // 设置 Vertex AI 路由
     await setupVertexRoutes(app);
 
